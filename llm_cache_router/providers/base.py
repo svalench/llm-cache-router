@@ -26,7 +26,6 @@ class ProviderError(RuntimeError):
 class LLMProvider(ABC):
     def __init__(self, config: ProviderConfig) -> None:
         self.config = config
-        self._config = config
         self._client = httpx.AsyncClient(timeout=self.config.timeout)
 
     @abstractmethod

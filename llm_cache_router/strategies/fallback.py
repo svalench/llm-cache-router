@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from llm_cache_router.models import LLMResponse
-from llm_cache_router.providers.base import ProviderError
+
+logger = logging.getLogger(__name__)
 
 
 class AllProvidersFailedError(RuntimeError):
@@ -20,6 +22,7 @@ class FallbackChainStrategy:
         for provider_model in self.chain:
             try:
                 return await asyncio.wait_for(call_provider(provider_model), timeout=self.timeout)
-            except (TimeoutError, ProviderError) as exc:
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Fallback: %s failed: %s", provider_model, exc)
                 errors.append(f"{provider_model}: {exc}")
         raise AllProvidersFailedError("; ".join(errors) or "All providers failed")

@@ -28,13 +28,13 @@ class GeminiProvider(LLMProvider):
         async def _call() -> LLMResponse:
             started = time.perf_counter()
             text = self._extract_text_from_messages(messages)
-            generation_config: dict[str, Any] = {"temperature": temperature}
+            generation_cfg: dict[str, Any] = {"temperature": temperature}
             payload: dict[str, Any] = {
                 "contents": [{"role": "user", "parts": [{"text": text}]}],
-                "generationConfig": generation_config,
+                "generationConfig": generation_cfg,
             }
             if max_tokens is not None:
-                generation_config["maxOutputTokens"] = max_tokens
+                generation_cfg["maxOutputTokens"] = max_tokens
 
             response = await self._client.post(
                 f"{self._base_url}/models/{model}:generateContent?key={self.config.api_key}",
@@ -58,7 +58,7 @@ class GeminiProvider(LLMProvider):
 
         return await with_retry(
             _call,
-            config=self._config.retry,
+            config=self.config.retry,
             operation_name=f"gemini/{model}",
         )
 
@@ -70,13 +70,13 @@ class GeminiProvider(LLMProvider):
         max_tokens: int | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         text = self._extract_text_from_messages(messages)
-        generation_config: dict[str, Any] = {"temperature": temperature}
+        generation_cfg: dict[str, Any] = {"temperature": temperature}
         payload: dict[str, Any] = {
             "contents": [{"role": "user", "parts": [{"text": text}]}],
-            "generationConfig": generation_config,
+            "generationConfig": generation_cfg,
         }
         if max_tokens is not None:
-            generation_config["maxOutputTokens"] = max_tokens
+            generation_cfg["maxOutputTokens"] = max_tokens
 
         url = (
             f"{self._base_url}/models/{model}:streamGenerateContent"

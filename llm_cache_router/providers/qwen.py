@@ -60,7 +60,7 @@ class QwenProvider(LLMProvider):
 
         return await with_retry(
             _call,
-            config=self._config.retry,
+            config=self.config.retry,
             operation_name=f"qwen/{model}",
         )
 

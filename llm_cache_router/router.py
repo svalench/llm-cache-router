@@ -119,7 +119,7 @@ class LLMRouter:
         provider_name, model_name = self._split_provider_model(
             response.provider_used, response.model_used
         )
-        response.cost_usd = self._cost_tracker.record(provider_name, model_name, usage)
+        response.cost_usd = await self._cost_tracker.record(provider_name, model_name, usage)
         await self._record_total_cost(response.cost_usd)
         await self._record_usage(provider_name, model_name, response)
 
@@ -397,7 +397,9 @@ class LLMRouter:
                     input_tokens=full_response.input_tokens,
                     output_tokens=full_response.output_tokens,
                 )
-                full_response.cost_usd = self._cost_tracker.record(provider_name, model_name, usage)
+                full_response.cost_usd = await self._cost_tracker.record(
+                    provider_name, model_name, usage
+                )
                 await self._record_total_cost(full_response.cost_usd)
                 await self._record_usage(provider_name, model_name, full_response)
                 chunk.cost_usd = full_response.cost_usd

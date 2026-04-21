@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from llm_cache_router.models import TokenUsage
@@ -18,25 +19,43 @@ class CostTracker:
         self._total_spend = 0.0
         self._reset_at = datetime.now(UTC).date()
         self._month_reset_at = datetime.now(UTC).strftime("%Y-%m")
+        self._lock = asyncio.Lock()
 
-    def record(self, provider: str, model: str, usage: TokenUsage) -> float:
-        self._check_reset()
-        cost = self._calculate(provider, model, usage)
-        self._daily_spend += cost
-        self._monthly_spend += cost
-        self._total_spend += cost
+    async def record(self, provider: str, model: str, usage: TokenUsage) -> float:
+        return await self._record_async(provider, model, usage)
 
-        daily_limit = self.budget.get("daily_usd")
-        if daily_limit is not None and self._daily_spend > float(daily_limit):
-            raise BudgetExceededError(
-                f"Daily budget ${daily_limit} exceeded. Spent: ${self._daily_spend:.6f}"
-            )
-        monthly_limit = self.budget.get("monthly_usd")
-        if monthly_limit is not None and self._monthly_spend > float(monthly_limit):
-            raise BudgetExceededError(
-                f"Monthly budget ${monthly_limit} exceeded. Spent: ${self._monthly_spend:.6f}"
-            )
-        return cost
+    def __getattribute__(self, name: str):  # noqa: ANN204
+        if name == "record":
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return object.__getattribute__(self, "_record_sync")
+        return object.__getattribute__(self, name)
+
+    async def _record_async(self, provider: str, model: str, usage: TokenUsage) -> float:
+        async with self._lock:
+            self._check_reset()
+            cost = self._calculate(provider, model, usage)
+            self._daily_spend += cost
+            self._monthly_spend += cost
+            self._total_spend += cost
+
+            daily_limit = self.budget.get("daily_usd")
+            if daily_limit is not None and self._daily_spend > float(daily_limit):
+                raise BudgetExceededError(
+                    f"Daily budget ${daily_limit} exceeded. "
+                    f"Spent: ${self._daily_spend:.6f}"
+                )
+            monthly_limit = self.budget.get("monthly_usd")
+            if monthly_limit is not None and self._monthly_spend > float(monthly_limit):
+                raise BudgetExceededError(
+                    f"Monthly budget ${monthly_limit} exceeded. "
+                    f"Spent: ${self._monthly_spend:.6f}"
+                )
+            return cost
+
+    def _record_sync(self, provider: str, model: str, usage: TokenUsage) -> float:
+        return asyncio.run(self._record_async(provider, model, usage))
 
     def stats(self) -> dict[str, float | None]:
         daily_limit = self.budget.get("daily_usd")
