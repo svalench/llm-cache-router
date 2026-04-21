@@ -75,6 +75,9 @@ Issues = "https://github.com/svalench/llm-cache-router/issues"
 Changelog = "https://github.com/svalench/llm-cache-router/releases"
 Documentation = "https://github.com/svalench/llm-cache-router#readme"
 
+[project.scripts]
+llm-cache-router = "llm_cache_router.cli:main"
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -84,7 +87,7 @@ include = ["llm_cache_router*"]
 exclude = ["tests*", "examples*"]
 
 [tool.setuptools.package-data]
-llm_cache_router = ["py.typed"]
+llm_cache_router = ["py.typed", "pricing/pricing.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

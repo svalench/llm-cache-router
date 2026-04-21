@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 
 from llm_cache_router.models import TokenUsage
-from llm_cache_router.strategies.cheapest import PRICING
+from llm_cache_router.pricing.manager import get_pricing_manager
 
 
 class BudgetExceededError(RuntimeError):
@@ -87,7 +87,7 @@ class CostTracker:
     @staticmethod
     def _calculate(provider: str, model: str, usage: TokenUsage) -> float:
         key = f"{provider}/{model}"
-        pricing = PRICING.get(key, {"input": 0.0, "output": 0.0})
+        pricing = get_pricing_manager().get(key)
         in_cost = (usage.input_tokens / 1_000_000) * pricing["input"]
         out_cost = (usage.output_tokens / 1_000_000) * pricing["output"]
         return in_cost + out_cost

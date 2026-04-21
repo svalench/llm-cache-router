@@ -94,7 +94,7 @@ class LLMRouter:
             return cached
         await self._record_cache_miss()
 
-        provider_model_key = self._select_provider_model(model=model)
+        provider_model_key = await self._select_provider_model(model=model)
         if self._strategy_type == RoutingStrategy.FALLBACK_CHAIN:
             response = await self._fallback.execute(
                 lambda pm: self._call_provider(
@@ -181,7 +181,7 @@ class LLMRouter:
                 raise last_exc
             raise RuntimeError("No available providers in fallback chain")
 
-        provider_model_key = self._select_provider_model(model=model)
+        provider_model_key = await self._select_provider_model(model=model)
         provider_name, model_name = self._split_provider_model(
             provider_model_key, fallback_model=model
         )
@@ -326,7 +326,7 @@ class LLMRouter:
                 keys.append(f"{provider_name}/{model_name}")
         return keys
 
-    def _select_provider_model(self, model: str) -> str:
+    async def _select_provider_model(self, model: str) -> str:
         providers_for_model = self._model_to_provider_names.get(model, [])
         if not providers_for_model:
             # model может приходить в формате provider/model
@@ -336,7 +336,9 @@ class LLMRouter:
 
         provider_models = [f"{name}/{model}" for name in providers_for_model]
         if self._strategy_type == RoutingStrategy.CHEAPEST_FIRST:
-            return self._cheapest.select(provider_models)
+            options = [(name, model) for name in providers_for_model]
+            provider_name, model_name = await self._cheapest.select(options)
+            return f"{provider_name}/{model_name}"
         if self._strategy_type == RoutingStrategy.FASTEST_FIRST:
             return self._fastest.select(provider_models)
         return provider_models[0]

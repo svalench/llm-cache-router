@@ -2,20 +2,28 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-# USD per 1M tokens, input/output.
-PRICING: dict[str, dict[str, float]] = {
-    "openai/gpt-4o": {"input": 2.50, "output": 10.00},
-    "openai/gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "anthropic/claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
-    "anthropic/claude-haiku": {"input": 0.25, "output": 1.25},
-    "ollama/llama3.2": {"input": 0.00, "output": 0.00},
-}
+from llm_cache_router.pricing.manager import get_pricing_manager
 
 
 class CheapestFirstStrategy:
-    def select(self, available_provider_models: Iterable[str], estimated_tokens: int = 0) -> str:
+    def __init__(self) -> None:
+        self._pricing = get_pricing_manager()
+
+    async def select(
+        self,
+        available_provider_models: Iterable[tuple[str, str]],
+        estimated_tokens: int | None = None,
+    ) -> tuple[str, str]:
         del estimated_tokens
+        await self._pricing.ensure_fresh()
         options = list(available_provider_models)
         if not options:
             raise ValueError("No providers available")
-        return min(options, key=lambda item: PRICING.get(item, {}).get("input", 999.0))
+        return min(
+            options,
+            key=lambda item: self._pricing.get(f"{item[0]}/{item[1]}").get("input", 0.0),
+        )
+
+
+# Backward-compat alias — не удалять до v1.0
+PRICING = get_pricing_manager().all
