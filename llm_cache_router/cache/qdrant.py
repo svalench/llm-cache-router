@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 from llm_cache_router.cache.base import CacheBackend
@@ -11,18 +11,38 @@ from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder,
 from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
 
 try:
-    import qdrant_client
-    from qdrant_client.http import models as qdrant_models
+    from qdrant_client import AsyncQdrantClient as _AsyncQdrantClient
+    from qdrant_client.http.models import (
+        Direction as _Direction,
+        Distance as _Distance,
+        OrderBy as _OrderBy,
+        PointIdsList as _PointIdsList,
+        PointStruct as _PointStruct,
+        VectorParams as _VectorParams,
+    )
 except ImportError:  # pragma: no cover
-    qdrant_client = None
-    qdrant_models = None
+    _AsyncQdrantClient = None
+    _Distance = None
+    _Direction = None
+    _OrderBy = None
+    _PointIdsList = None
+    _PointStruct = None
+    _VectorParams = None
+
+AsyncQdrantClient: Any = _AsyncQdrantClient
+Distance: Any = _Distance
+Direction: Any = _Direction
+OrderBy: Any = _OrderBy
+PointIdsList: Any = _PointIdsList
+PointStruct: Any = _PointStruct
+VectorParams: Any = _VectorParams
 
 logger = logging.getLogger(__name__)
 
 
 class QdrantSemanticCache(CacheBackend):
     def __init__(self, config: CacheConfig) -> None:
-        if qdrant_client is None or qdrant_models is None:  # pragma: no cover
+        if AsyncQdrantClient is None or VectorParams is None or Distance is None:  # pragma: no cover
             raise RuntimeError(
                 "qdrant-client is required for QdrantSemanticCache. "
                 "Install with: pip install 'llm-cache-router[qdrant]'"
@@ -30,7 +50,7 @@ class QdrantSemanticCache(CacheBackend):
         self._config = config
         self._dimension = 384
         self._collection_name = config.qdrant_collection
-        self._client = qdrant_client.AsyncQdrantClient(
+        self._client = AsyncQdrantClient(
             url=config.qdrant_url,
             api_key=config.qdrant_api_key,
         )
@@ -111,7 +131,7 @@ class QdrantSemanticCache(CacheBackend):
         await self._client.upsert(
             collection_name=self._collection_name,
             points=[
-                cast(Any, qdrant_models.PointStruct)(
+                PointStruct(
                     id=str(uuid4()),
                     vector=embedding.tolist(),
                     payload=payload,
@@ -129,9 +149,9 @@ class QdrantSemanticCache(CacheBackend):
         await self._client.delete_collection(collection_name=self._collection_name)
         await self._client.create_collection(
             collection_name=self._collection_name,
-            vectors_config=cast(Any, qdrant_models.VectorParams)(
+            vectors_config=VectorParams(
                 size=self._dimension,
-                distance=cast(Any, qdrant_models.Distance).COSINE,
+                distance=Distance.COSINE,
             ),
         )
         self._total_vectors = 0
@@ -152,9 +172,9 @@ class QdrantSemanticCache(CacheBackend):
             if not exists:
                 await self._client.create_collection(
                     collection_name=self._collection_name,
-                    vectors_config=cast(Any, qdrant_models.VectorParams)(
+                    vectors_config=VectorParams(
                         size=self._dimension,
-                        distance=cast(Any, qdrant_models.Distance).COSINE,
+                        distance=Distance.COSINE,
                     ),
                 )
             self._total_vectors = await self._count_vectors()
@@ -172,16 +192,16 @@ class QdrantSemanticCache(CacheBackend):
             limit=count,
             with_payload=["created_at_ts"],
             with_vectors=False,
-            order_by=cast(Any, qdrant_models.OrderBy)(
+            order_by=OrderBy(
                 key="created_at_ts",
-                direction=cast(Any, qdrant_models.Direction).ASC,
+                direction=Direction.ASC,
             ),
         )
         ids_to_delete = [point.id for point in results]
         if ids_to_delete:
             await self._client.delete(
                 collection_name=self._collection_name,
-                points_selector=cast(Any, qdrant_models.PointIdsList)(points=ids_to_delete),
+                points_selector=PointIdsList(points=ids_to_delete),
             )
             logger.info("Qdrant evicted %d oldest entries", len(ids_to_delete))
 
