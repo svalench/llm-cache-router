@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from uuid import uuid4
 
@@ -10,12 +11,16 @@ from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
 
 try:
     from qdrant_client import AsyncQdrantClient
-    from qdrant_client.http.models import Distance, PointStruct, VectorParams
+    from qdrant_client.http.models import Distance, OrderBy, PointIdsList, PointStruct, VectorParams
 except ImportError:  # pragma: no cover
     AsyncQdrantClient = None
     Distance = None
+    OrderBy = None
+    PointIdsList = None
     PointStruct = None
     VectorParams = None
+
+logger = logging.getLogger(__name__)
 
 
 class QdrantSemanticCache(CacheBackend):
@@ -96,7 +101,6 @@ class QdrantSemanticCache(CacheBackend):
         payload = {
             "query": entry.query,
             "response": entry.response.model_dump(),
-            "embedding": entry.embedding,
             "created_at_ts": entry.created_at_ts,
             "ttl": entry.ttl,
             "hit_count": entry.hit_count,
@@ -113,6 +117,10 @@ class QdrantSemanticCache(CacheBackend):
             ],
         )
         self._total_vectors = await self._count_vectors()
+        if self._config.max_entries > 0 and self._total_vectors > self._config.max_entries:
+            overflow = self._total_vectors - self._config.max_entries
+            await self._evict_oldest(overflow)
+            self._total_vectors = await self._count_vectors()
 
     async def clear(self) -> None:
         await self._ensure_collection()
@@ -148,13 +156,31 @@ class QdrantSemanticCache(CacheBackend):
         count = await self._client.count(collection_name=self._collection_name, exact=True)
         return int(count.count)
 
+    async def _evict_oldest(self, count: int) -> None:
+        if count <= 0:
+            return
+        results, _ = await self._client.scroll(
+            collection_name=self._collection_name,
+            limit=count,
+            with_payload=["created_at_ts"],
+            with_vectors=False,
+            order_by=OrderBy(key="created_at_ts", direction="asc"),
+        )
+        ids_to_delete = [point.id for point in results]
+        if ids_to_delete:
+            await self._client.delete(
+                collection_name=self._collection_name,
+                points_selector=PointIdsList(points=ids_to_delete),
+            )
+            logger.info("Qdrant evicted %d oldest entries", len(ids_to_delete))
+
     @staticmethod
     def _entry_from_payload(payload: dict) -> CacheEntry | None:
         try:
             return CacheEntry(
                 query=payload["query"],
                 response=LLMResponse.model_validate(payload["response"]),
-                embedding=payload["embedding"],
+                embedding=[],
                 created_at_ts=float(payload["created_at_ts"]),
                 ttl=int(payload["ttl"]),
                 hit_count=int(payload.get("hit_count", 0)),

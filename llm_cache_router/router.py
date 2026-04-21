@@ -62,6 +62,7 @@ class LLMRouter:
         self._saved_cost_usd = 0.0
         self._provider_usage: dict[str, int] = {}
         self._model_usage: dict[str, ModelUsageStat] = {}
+        self._usage_lock = asyncio.Lock()
 
     async def __aenter__(self) -> LLMRouter:
         return self
@@ -82,17 +83,16 @@ class LLMRouter:
         temperature: float = 0.0,
         max_tokens: int | None = None,
     ) -> LLMResponse:
-        self._total_requests += 1
+        await self._increment_total_requests()
 
         cache_entry, similarity = await self._cache.get(messages)
         if cache_entry is not None:
-            self._cache_hits += 1
-            self._saved_cost_usd += cache_entry.response.cost_usd
+            await self._record_cache_hit(cache_entry.response.cost_usd)
             cached = cache_entry.response.model_copy(deep=True)
             cached.cache_hit = True
             cached.cache_similarity = similarity
             return cached
-        self._cache_misses += 1
+        await self._record_cache_miss()
 
         provider_model_key = self._select_provider_model(model=model)
         if self._strategy_type == RoutingStrategy.FALLBACK_CHAIN:
@@ -120,8 +120,8 @@ class LLMRouter:
             response.provider_used, response.model_used
         )
         response.cost_usd = self._cost_tracker.record(provider_name, model_name, usage)
-        self._total_cost_usd += response.cost_usd
-        self._record_usage(provider_name, model_name, response)
+        await self._record_total_cost(response.cost_usd)
+        await self._record_usage(provider_name, model_name, response)
 
         if self._strategy_type == RoutingStrategy.FASTEST_FIRST:
             self._fastest.observe(f"{provider_name}/{model_name}", response.latency_ms)
@@ -136,12 +136,11 @@ class LLMRouter:
         temperature: float = 0.0,
         max_tokens: int | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
-        self._total_requests += 1
+        await self._increment_total_requests()
 
         cache_entry, similarity = await self._cache.get(messages)
         if cache_entry is not None:
-            self._cache_hits += 1
-            self._saved_cost_usd += cache_entry.response.cost_usd
+            await self._record_cache_hit(cache_entry.response.cost_usd)
             yield LLMStreamChunk(
                 delta=cache_entry.response.content,
                 provider_used=cache_entry.response.provider_used,
@@ -152,66 +151,50 @@ class LLMRouter:
                 cost_usd=0.0,
             )
             return
-        self._cache_misses += 1
+        await self._record_cache_miss()
+
+        if self._strategy_type == RoutingStrategy.FALLBACK_CHAIN:
+            last_exc: Exception | None = None
+            for provider_model_key in self._fallback.chain:
+                provider_name, model_name = self._split_provider_model(
+                    provider_model_key, fallback_model=model
+                )
+                provider = self._providers.get(provider_name)
+                if provider is None:
+                    continue
+                try:
+                    async for chunk in self._stream_from_provider(
+                        provider=provider,
+                        provider_name=provider_name,
+                        model_name=model_name,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    ):
+                        yield chunk
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    logger.warning("Stream fallback: %s failed: %s", provider_model_key, exc)
+                    continue
+            if last_exc is not None:
+                raise last_exc
+            raise RuntimeError("No available providers in fallback chain")
 
         provider_model_key = self._select_provider_model(model=model)
         provider_name, model_name = self._split_provider_model(
             provider_model_key, fallback_model=model
         )
         provider = self._providers[provider_name]
-
-        full_content = ""
-        final_recorded = False
-        async for chunk in provider.stream(
+        async for chunk in self._stream_from_provider(
+            provider=provider,
+            provider_name=provider_name,
+            model_name=model_name,
             messages=messages,
-            model=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
         ):
-            chunk.provider_used = provider_name
-            chunk.model_used = model_name
-            full_content += chunk.delta
-
-            if chunk.is_final and not final_recorded:
-                full_response = LLMResponse(
-                    content=full_content,
-                    provider_used=provider_name,
-                    model_used=model_name,
-                    cache_hit=False,
-                    input_tokens=chunk.input_tokens or 0,
-                    output_tokens=chunk.output_tokens or 0,
-                )
-                usage = TokenUsage(
-                    input_tokens=full_response.input_tokens,
-                    output_tokens=full_response.output_tokens,
-                )
-                full_response.cost_usd = self._cost_tracker.record(provider_name, model_name, usage)
-                self._total_cost_usd += full_response.cost_usd
-                self._record_usage(provider_name, model_name, full_response)
-                chunk.cost_usd = full_response.cost_usd
-                await self._cache.set(messages, full_response)
-                final_recorded = True
-
             yield chunk
-
-        if not final_recorded:
-            full_response = LLMResponse(
-                content=full_content,
-                provider_used=provider_name,
-                model_used=model_name,
-                cache_hit=False,
-                input_tokens=0,
-                output_tokens=0,
-            )
-            self._record_usage(provider_name, model_name, full_response)
-            await self._cache.set(messages, full_response)
-            yield LLMStreamChunk(
-                delta="",
-                provider_used=provider_name,
-                model_used=model_name,
-                is_final=True,
-                cost_usd=full_response.cost_usd,
-            )
 
     def stats(self) -> RouterStats:
         total = self._total_requests or 1
@@ -380,14 +363,96 @@ class LLMRouter:
         response.model_used = model_name
         return response
 
-    def _record_usage(self, provider_name: str, model_name: str, response: LLMResponse) -> None:
+    async def _stream_from_provider(
+        self,
+        provider: LLMProvider,
+        provider_name: str,
+        model_name: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int | None,
+    ) -> AsyncGenerator[LLMStreamChunk, None]:
+        full_content = ""
+        final_recorded = False
+        async for chunk in provider.stream(
+            messages=messages,
+            model=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            chunk.provider_used = provider_name
+            chunk.model_used = model_name
+            full_content += chunk.delta
+
+            if chunk.is_final and not final_recorded:
+                full_response = LLMResponse(
+                    content=full_content,
+                    provider_used=provider_name,
+                    model_used=model_name,
+                    cache_hit=False,
+                    input_tokens=chunk.input_tokens or 0,
+                    output_tokens=chunk.output_tokens or 0,
+                )
+                usage = TokenUsage(
+                    input_tokens=full_response.input_tokens,
+                    output_tokens=full_response.output_tokens,
+                )
+                full_response.cost_usd = self._cost_tracker.record(provider_name, model_name, usage)
+                await self._record_total_cost(full_response.cost_usd)
+                await self._record_usage(provider_name, model_name, full_response)
+                chunk.cost_usd = full_response.cost_usd
+                await self._cache.set(messages, full_response)
+                final_recorded = True
+
+            yield chunk
+
+        if not final_recorded:
+            full_response = LLMResponse(
+                content=full_content,
+                provider_used=provider_name,
+                model_used=model_name,
+                cache_hit=False,
+                input_tokens=0,
+                output_tokens=0,
+            )
+            await self._record_usage(provider_name, model_name, full_response)
+            await self._cache.set(messages, full_response)
+            yield LLMStreamChunk(
+                delta="",
+                provider_used=provider_name,
+                model_used=model_name,
+                is_final=True,
+                cost_usd=full_response.cost_usd,
+            )
+
+    async def _record_usage(
+        self, provider_name: str, model_name: str, response: LLMResponse
+    ) -> None:
         key = f"{provider_name}/{model_name}"
-        self._provider_usage[provider_name] = self._provider_usage.get(provider_name, 0) + 1
-        stat = self._model_usage.setdefault(key, ModelUsageStat())
-        stat.requests += 1
-        stat.total_cost_usd += response.cost_usd
-        stat.input_tokens += response.input_tokens
-        stat.output_tokens += response.output_tokens
+        async with self._usage_lock:
+            self._provider_usage[provider_name] = self._provider_usage.get(provider_name, 0) + 1
+            stat = self._model_usage.setdefault(key, ModelUsageStat())
+            stat.requests += 1
+            stat.total_cost_usd += response.cost_usd
+            stat.input_tokens += response.input_tokens
+            stat.output_tokens += response.output_tokens
+
+    async def _increment_total_requests(self) -> None:
+        async with self._usage_lock:
+            self._total_requests += 1
+
+    async def _record_cache_hit(self, saved_cost_usd: float) -> None:
+        async with self._usage_lock:
+            self._cache_hits += 1
+            self._saved_cost_usd += saved_cost_usd
+
+    async def _record_cache_miss(self) -> None:
+        async with self._usage_lock:
+            self._cache_misses += 1
+
+    async def _record_total_cost(self, cost_usd: float) -> None:
+        async with self._usage_lock:
+            self._total_cost_usd += cost_usd
 
     @staticmethod
     def _split_provider_model(

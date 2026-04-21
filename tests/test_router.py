@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from llm_cache_router import CacheConfig, LLMRouter, RoutingStrategy
-from llm_cache_router.models import LLMResponse
+from llm_cache_router.models import LLMResponse, LLMStreamChunk
 
 
 class StubProvider:
@@ -20,6 +20,55 @@ class StubProvider:
             input_tokens=100,
             output_tokens=50,
             latency_ms=12,
+        )
+
+    async def close(self) -> None:
+        return None
+
+
+class FailingStreamProvider:
+    def __init__(self) -> None:
+        self.stream_calls = 0
+
+    async def complete(self, messages, model, temperature=0.0, max_tokens=None):  # noqa: ANN001,ANN201
+        del messages, model, temperature, max_tokens
+        return LLMResponse(content="", provider_used="openai", model_used="gpt-4o")
+
+    async def stream(self, messages, model, temperature=0.0, max_tokens=None):  # noqa: ANN001,ANN201
+        del messages, model, temperature, max_tokens
+        self.stream_calls += 1
+        raise RuntimeError("stream failed")
+        yield  # pragma: no cover
+
+    async def close(self) -> None:
+        return None
+
+
+class SuccessfulStreamProvider:
+    def __init__(self) -> None:
+        self.stream_calls = 0
+
+    async def complete(self, messages, model, temperature=0.0, max_tokens=None):  # noqa: ANN001,ANN201
+        del messages, temperature, max_tokens
+        return LLMResponse(
+            content="ok",
+            provider_used="anthropic",
+            model_used=model,
+            input_tokens=10,
+            output_tokens=5,
+        )
+
+    async def stream(self, messages, model, temperature=0.0, max_tokens=None):  # noqa: ANN001,ANN201
+        del messages, temperature, max_tokens
+        self.stream_calls += 1
+        yield LLMStreamChunk(delta="hello ", provider_used="anthropic", model_used=model)
+        yield LLMStreamChunk(
+            delta="world",
+            provider_used="anthropic",
+            model_used=model,
+            is_final=True,
+            input_tokens=10,
+            output_tokens=5,
         )
 
     async def close(self) -> None:
@@ -90,4 +139,31 @@ async def test_async_context_manager() -> None:
     ) as router:
         assert router is not None
     await router.close()
+
+
+@pytest.mark.asyncio
+async def test_router_stream_fallback_chain() -> None:
+    router = LLMRouter(
+        providers={
+            "openai": {"api_key": "test", "models": ["gpt-4o"]},
+            "anthropic": {"api_key": "test", "models": ["claude-3-5-sonnet"]},
+        },
+        cache=CacheConfig(backend="memory", min_query_length=1, embedding_model="hash"),
+        strategy=RoutingStrategy.FALLBACK_CHAIN,
+        fallback_chain=["openai/gpt-4o", "anthropic/claude-3-5-sonnet"],
+    )
+    first = FailingStreamProvider()
+    second = SuccessfulStreamProvider()
+    router._providers["openai"] = first  # noqa: SLF001
+    router._providers["anthropic"] = second  # noqa: SLF001
+
+    messages = [{"role": "user", "content": "stream with fallback"}]
+    chunks = [chunk async for chunk in router.stream(messages=messages, model="gpt-4o")]
+
+    assert first.stream_calls == 1
+    assert second.stream_calls == 1
+    assert "".join(chunk.delta for chunk in chunks) == "hello world"
+    assert chunks[-1].is_final is True
+    assert chunks[-1].provider_used == "anthropic"
+    assert chunks[-1].model_used == "claude-3-5-sonnet"
 
