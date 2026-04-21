@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class RoutingStrategy(str, Enum):
+class RoutingStrategy(StrEnum):
     CHEAPEST_FIRST = "cheapest_first"
     FASTEST_FIRST = "fastest_first"
     FALLBACK_CHAIN = "fallback_chain"
