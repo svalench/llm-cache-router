@@ -14,10 +14,20 @@ try:
     from qdrant_client import AsyncQdrantClient as _AsyncQdrantClient
     from qdrant_client.http.models import (
         Direction as _Direction,
+    )
+    from qdrant_client.http.models import (
         Distance as _Distance,
+    )
+    from qdrant_client.http.models import (
         OrderBy as _OrderBy,
+    )
+    from qdrant_client.http.models import (
         PointIdsList as _PointIdsList,
+    )
+    from qdrant_client.http.models import (
         PointStruct as _PointStruct,
+    )
+    from qdrant_client.http.models import (
         VectorParams as _VectorParams,
     )
 except ImportError:  # pragma: no cover

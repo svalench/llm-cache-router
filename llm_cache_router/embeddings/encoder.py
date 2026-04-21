@@ -5,7 +5,9 @@ from typing import Any, Protocol
 import numpy as np
 
 try:
-    from sentence_transformers import SentenceTransformer as _SentenceTransformerClass  # type: ignore[import-untyped]
+    from sentence_transformers import (
+        SentenceTransformer as _SentenceTransformerClass,  # type: ignore[import-untyped]
+    )
 except ImportError:  # pragma: no cover
     _SentenceTransformerClass = None
 
