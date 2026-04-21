@@ -4,24 +4,30 @@ import asyncio
 import json
 import time
 import uuid
+from typing import Any, Awaitable, Callable
 
 import numpy as np
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from llm_cache_router.cache.base import CacheBackend
-from llm_cache_router.embeddings.encoder import HashingEncoder, SentenceEncoder
+from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
 from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
 
+redis_asyncio: Any
+RedisOperationError: type[Exception]
 try:
-    from redis.asyncio import from_url as redis_from_url
-    from redis.exceptions import RedisError
+    import redis.asyncio as _redis_asyncio
+    from redis.exceptions import RedisError as _RedisOperationError
+
+    redis_asyncio = _redis_asyncio
+    RedisOperationError = _RedisOperationError
 except ImportError:  # pragma: no cover
-    redis_from_url = None
-    RedisError = Exception
+    redis_asyncio = None
+    RedisOperationError = Exception
 
 
 class RedisSemanticCache(CacheBackend):
-    def __init__(self, config: CacheConfig, redis_client=None) -> None:  # noqa: ANN001
+    def __init__(self, config: CacheConfig, redis_client: Any = None) -> None:
         self._config = config
         self._namespace = config.redis_namespace
         self._index_key = f"{self._namespace}:entries"
@@ -34,6 +40,7 @@ class RedisSemanticCache(CacheBackend):
         self._timeouts = 0
         self._retries = 0
 
+        self._encoder: EncoderProtocol
         if config.embedding_model == "hash":
             self._encoder = HashingEncoder()
         else:
@@ -47,9 +54,9 @@ class RedisSemanticCache(CacheBackend):
             self._owns_client = False
             return
 
-        if redis_from_url is None:  # pragma: no cover
+        if redis_asyncio is None:  # pragma: no cover
             raise RuntimeError("redis dependency is required for RedisSemanticCache")
-        self._redis = redis_from_url(config.redis_url, decode_responses=True)
+        self._redis = redis_asyncio.from_url(config.redis_url, decode_responses=True)
         self._owns_client = True
 
     async def get(self, messages: list[dict[str, str]]) -> tuple[CacheEntry | None, float | None]:
@@ -210,24 +217,25 @@ class RedisSemanticCache(CacheBackend):
         if method_name not in methods:
             raise ValueError(f"Unsupported redis method: {method_name}")
         method = methods[method_name]
+        call: Callable[..., Awaitable[Any]] = method
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(max(1, self._retry_attempts)),
             wait=wait_exponential(multiplier=self._retry_backoff_sec, min=0.05, max=1.0),
             retry=retry_if_exception_type(
-                (RedisError, asyncio.TimeoutError, TimeoutError, OSError)
+                (RedisOperationError, asyncio.TimeoutError, TimeoutError, OSError)
             ),
             reraise=True,
         ):
             with attempt:
                 try:
                     return await asyncio.wait_for(
-                        method(*args, **kwargs),
+                        call(*args, **kwargs),
                         timeout=self._command_timeout_sec,
                     )
                 except TimeoutError:
                     self._timeouts += 1
                     raise
-                except (RedisError, OSError):
+                except (RedisOperationError, OSError):
                     self._retries += 1
                     raise
 

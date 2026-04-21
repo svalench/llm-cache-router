@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
 try:
     from sentence_transformers import SentenceTransformer  # type: ignore
 except ImportError:  # pragma: no cover
-    SentenceTransformer = None
+    SentenceTransformer = None  # type: ignore[assignment]
 
 
 class EncoderProtocol(Protocol):
@@ -18,7 +18,7 @@ class SentenceEncoder:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         if SentenceTransformer is None:  # pragma: no cover
             raise RuntimeError("sentence-transformers is not installed")
-        self._model = SentenceTransformer(model_name)
+        self._model: Any = SentenceTransformer(model_name)
 
     def encode(self, text: str) -> np.ndarray:
         embedding = self._model.encode([text], normalize_embeddings=True)[0]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from llm_cache_router.models import LLMResponse
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig, ProviderError
@@ -22,14 +23,15 @@ class OllamaProvider(LLMProvider):
     ) -> LLMResponse:
         async def _call() -> LLMResponse:
             started = time.perf_counter()
-            payload = {
+            options: dict[str, Any] = {"temperature": temperature}
+            payload: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
                 "stream": False,
-                "options": {"temperature": temperature},
+                "options": options,
             }
             if max_tokens is not None:
-                payload["options"]["num_predict"] = max_tokens
+                options["num_predict"] = max_tokens
             response = await self._client.post(f"{self._base_url}/api/chat", json=payload)
             if response.status_code >= 400:
                 raise ProviderError(f"Ollama error: {response.status_code} {response.text}")

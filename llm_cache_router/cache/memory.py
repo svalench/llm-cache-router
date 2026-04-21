@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 from llm_cache_router.cache.base import CacheBackend
-from llm_cache_router.embeddings.encoder import HashingEncoder, SentenceEncoder
+from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
 from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
 
 try:
@@ -26,6 +26,7 @@ class InMemorySemanticCache(CacheBackend):
         self._dimension = 384
         self._use_faiss = faiss is not None
 
+        self._encoder: EncoderProtocol
         if config.embedding_model == "hash":
             self._encoder = HashingEncoder(self._dimension)
         else:

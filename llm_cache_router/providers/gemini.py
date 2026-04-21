@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from llm_cache_router.models import LLMResponse
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig, ProviderError
@@ -25,12 +26,13 @@ class GeminiProvider(LLMProvider):
         async def _call() -> LLMResponse:
             started = time.perf_counter()
             text = self._extract_text_from_messages(messages)
-            payload = {
+            generation_config: dict[str, Any] = {"temperature": temperature}
+            payload: dict[str, Any] = {
                 "contents": [{"role": "user", "parts": [{"text": text}]}],
-                "generationConfig": {"temperature": temperature},
+                "generationConfig": generation_config,
             }
             if max_tokens is not None:
-                payload["generationConfig"]["maxOutputTokens"] = max_tokens
+                generation_config["maxOutputTokens"] = max_tokens
 
             response = await self._client.post(
                 f"{self._base_url}/models/{model}:generateContent?key={self.config.api_key}",
