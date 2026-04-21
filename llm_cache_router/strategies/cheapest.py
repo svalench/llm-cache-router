@@ -19,4 +19,3 @@ class CheapestFirstStrategy:
         if not options:
             raise ValueError("No providers available")
         return min(options, key=lambda item: PRICING.get(item, {}).get("input", 999.0))
-

@@ -56,7 +56,9 @@ class LLMHTTPMetricsMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
             )
 
 
-def cached_llm(router: LLMRouter, ttl: int | None = None) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+def cached_llm(
+    router: LLMRouter, ttl: int | None = None
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     del ttl
 
     def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
@@ -88,4 +90,3 @@ def add_http_metrics_middleware(
     app.state.llm_http_metrics = collector
     app.add_middleware(LLMHTTPMetricsMiddleware, collector=collector)
     return collector
-

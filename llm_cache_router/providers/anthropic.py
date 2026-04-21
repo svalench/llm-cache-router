@@ -44,7 +44,9 @@ class AnthropicProvider(LLMProvider):
                 raise ProviderError(f"Anthropic error: {response.status_code} {response.text}")
             data = response.json()
             text_parts = [
-                item.get("text", "") for item in data.get("content", []) if item.get("type") == "text"
+                item.get("text", "")
+                for item in data.get("content", [])
+                if item.get("type") == "text"
             ]
             usage = data.get("usage", {})
             latency_ms = int((time.perf_counter() - started) * 1000)
@@ -92,7 +94,9 @@ class AnthropicProvider(LLMProvider):
         ) as response:
             if response.status_code >= 400:
                 body = await response.aread()
-                raise ProviderError(f"Anthropic error: {response.status_code} {body.decode(errors='ignore')}")
+                raise ProviderError(
+                    f"Anthropic error: {response.status_code} {body.decode(errors='ignore')}"
+                )
             event_type = ""
             async for line in response.aiter_lines():
                 if not line:
@@ -140,4 +144,3 @@ class AnthropicProvider(LLMProvider):
 
 
 register_provider("anthropic", AnthropicProvider)
-

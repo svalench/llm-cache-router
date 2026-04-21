@@ -12,8 +12,7 @@ def register_provider(name: str, cls: type[LLMProvider]) -> None:
 def get_provider_class(name: str) -> type[LLMProvider]:
     if name not in _REGISTRY:
         raise ValueError(
-            f"Unsupported provider: '{name}'. "
-            f"Available providers: {sorted(_REGISTRY.keys())}"
+            f"Unsupported provider: '{name}'. Available providers: {sorted(_REGISTRY.keys())}"
         )
     return _REGISTRY[name]
 

@@ -100,4 +100,3 @@ class CacheEntry(BaseModel):
 
     def is_expired(self, now_ts: float) -> bool:
         return now_ts > (self.created_at_ts + self.ttl)
-

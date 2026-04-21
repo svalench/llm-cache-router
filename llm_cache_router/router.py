@@ -116,7 +116,9 @@ class LLMRouter:
 
         response.cache_hit = False
         usage = TokenUsage(input_tokens=response.input_tokens, output_tokens=response.output_tokens)
-        provider_name, model_name = self._split_provider_model(response.provider_used, response.model_used)
+        provider_name, model_name = self._split_provider_model(
+            response.provider_used, response.model_used
+        )
         response.cost_usd = self._cost_tracker.record(provider_name, model_name, usage)
         self._total_cost_usd += response.cost_usd
         self._record_usage(provider_name, model_name, response)
@@ -153,7 +155,9 @@ class LLMRouter:
         self._cache_misses += 1
 
         provider_model_key = self._select_provider_model(model=model)
-        provider_name, model_name = self._split_provider_model(provider_model_key, fallback_model=model)
+        provider_name, model_name = self._split_provider_model(
+            provider_model_key, fallback_model=model
+        )
         provider = self._providers[provider_name]
 
         full_content = ""
@@ -362,7 +366,9 @@ class LLMRouter:
         temperature: float,
         max_tokens: int | None,
     ) -> LLMResponse:
-        provider_name, model_name = self._split_provider_model(provider_model_key, fallback_model=model)
+        provider_name, model_name = self._split_provider_model(
+            provider_model_key, fallback_model=model
+        )
         provider = self._providers[provider_name]
         response = await provider.complete(
             messages=messages,
@@ -384,11 +390,12 @@ class LLMRouter:
         stat.output_tokens += response.output_tokens
 
     @staticmethod
-    def _split_provider_model(provider_model_key: str, fallback_model: str | None = None) -> tuple[str, str]:
+    def _split_provider_model(
+        provider_model_key: str, fallback_model: str | None = None
+    ) -> tuple[str, str]:
         if "/" in provider_model_key:
             provider_name, model_name = provider_model_key.split("/", 1)
             return provider_name, model_name
         if fallback_model is None:
             raise ValueError("Model name is required")
         return provider_model_key, fallback_model
-

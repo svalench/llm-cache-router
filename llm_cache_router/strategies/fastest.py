@@ -20,4 +20,3 @@ class FastestFirstStrategy:
         if not options:
             raise ValueError("No providers available")
         return min(options, key=lambda item: self._p50_by_provider_model.get(item, 10_000.0))
-

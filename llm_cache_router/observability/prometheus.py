@@ -33,12 +33,14 @@ class HTTPMetricsCollector:
 
     def build_metrics(self) -> str:
         lines: list[str] = []
-        lines.append("# HELP llm_router_http_requests_total Total HTTP requests by method/path/status.")
+        lines.append(
+            "# HELP llm_router_http_requests_total Total HTTP requests by method/path/status."
+        )
         lines.append("# TYPE llm_router_http_requests_total counter")
         with self._lock:
             for (method, path, status), value in sorted(self._requests_total.items()):
                 lines.append(
-                    'llm_router_http_requests_total'
+                    "llm_router_http_requests_total"
                     f'{{method="{method}",path="{_escape_label(path)}",status="{status}"}} {value}'
                 )
 
@@ -50,28 +52,30 @@ class HTTPMetricsCollector:
                 for bucket in self._buckets:
                     bucket_value = self._duration_bucket.get((method, path, bucket), 0)
                     lines.append(
-                        'llm_router_http_request_duration_seconds_bucket'
+                        "llm_router_http_request_duration_seconds_bucket"
                         f'{{method="{method}",path="{_escape_label(path)}",le="{bucket}"}} {bucket_value}'
                     )
                 inf_value = self._duration_bucket.get((method, path, float("inf")), 0)
                 lines.append(
-                    'llm_router_http_request_duration_seconds_bucket'
+                    "llm_router_http_request_duration_seconds_bucket"
                     f'{{method="{method}",path="{_escape_label(path)}",le="+Inf"}} {inf_value}'
                 )
                 lines.append(
-                    'llm_router_http_request_duration_seconds_sum'
+                    "llm_router_http_request_duration_seconds_sum"
                     f'{{method="{method}",path="{_escape_label(path)}"}} '
-                    f'{self._duration_sum[(method, path)]}'
+                    f"{self._duration_sum[(method, path)]}"
                 )
                 lines.append(
-                    'llm_router_http_request_duration_seconds_count'
+                    "llm_router_http_request_duration_seconds_count"
                     f'{{method="{method}",path="{_escape_label(path)}"}} '
-                    f'{self._duration_count[(method, path)]}'
+                    f"{self._duration_count[(method, path)]}"
                 )
         return "\n".join(lines)
 
 
-def build_prometheus_metrics(router: LLMRouter, http_metrics: HTTPMetricsCollector | None = None) -> str:
+def build_prometheus_metrics(
+    router: LLMRouter, http_metrics: HTTPMetricsCollector | None = None
+) -> str:
     snapshot = router.metrics_snapshot()
     lines: list[str] = []
 
@@ -79,11 +83,15 @@ def build_prometheus_metrics(router: LLMRouter, http_metrics: HTTPMetricsCollect
     _append_metric(lines, "llm_router_cache_hits_total", "counter", snapshot["cache_hits"])
     _append_metric(lines, "llm_router_cache_misses_total", "counter", snapshot["cache_misses"])
     _append_metric(lines, "llm_router_cache_hit_rate", "gauge", snapshot["cache_hit_rate"])
-    _append_metric(lines, "llm_router_cache_evictions_total", "counter", snapshot["cache_evictions"])
+    _append_metric(
+        lines, "llm_router_cache_evictions_total", "counter", snapshot["cache_evictions"]
+    )
     _append_metric(lines, "llm_router_cost_total_usd", "gauge", snapshot["total_cost_usd"])
     _append_metric(lines, "llm_router_saved_cost_total_usd", "gauge", snapshot["saved_cost_usd"])
 
-    _append_optional_metric(lines, "llm_router_daily_spend_usd", "gauge", snapshot["daily_spend_usd"])
+    _append_optional_metric(
+        lines, "llm_router_daily_spend_usd", "gauge", snapshot["daily_spend_usd"]
+    )
     _append_optional_metric(
         lines,
         "llm_router_monthly_spend_usd",
@@ -167,4 +175,3 @@ def _to_float(value: Any) -> float:
 
 def _escape_label(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-

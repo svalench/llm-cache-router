@@ -11,8 +11,7 @@ except ImportError:  # pragma: no cover
 
 
 class EncoderProtocol(Protocol):
-    def encode(self, text: str) -> np.ndarray:
-        ...
+    def encode(self, text: str) -> np.ndarray: ...
 
 
 class SentenceEncoder:
@@ -45,4 +44,3 @@ class HashingEncoder:
         if norm == 0:
             return vec
         return vec / norm
-

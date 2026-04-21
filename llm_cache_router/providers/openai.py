@@ -87,7 +87,9 @@ class OpenAIProvider(LLMProvider):
         ) as response:
             if response.status_code >= 400:
                 body = await response.aread()
-                raise ProviderError(f"OpenAI error: {response.status_code} {body.decode(errors='ignore')}")
+                raise ProviderError(
+                    f"OpenAI error: {response.status_code} {body.decode(errors='ignore')}"
+                )
             async for line in response.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue
@@ -128,4 +130,3 @@ class OpenAIProvider(LLMProvider):
 
 
 register_provider("openai", OpenAIProvider)
-

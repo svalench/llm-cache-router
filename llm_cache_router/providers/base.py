@@ -63,4 +63,3 @@ class LLMProvider(ABC):
     @staticmethod
     def _extract_text_from_messages(messages: list[dict[str, str]]) -> str:
         return "\n".join(m.get("content", "") for m in messages if m.get("content"))
-

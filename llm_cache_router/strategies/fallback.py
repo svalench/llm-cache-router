@@ -23,4 +23,3 @@ class FallbackChainStrategy:
             except (TimeoutError, ProviderError) as exc:
                 errors.append(f"{provider_model}: {exc}")
         raise AllProvidersFailedError("; ".join(errors) or "All providers failed")
-

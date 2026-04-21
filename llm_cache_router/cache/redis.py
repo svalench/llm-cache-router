@@ -213,7 +213,9 @@ class RedisSemanticCache(CacheBackend):
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(max(1, self._retry_attempts)),
             wait=wait_exponential(multiplier=self._retry_backoff_sec, min=0.05, max=1.0),
-            retry=retry_if_exception_type((RedisError, asyncio.TimeoutError, TimeoutError, OSError)),
+            retry=retry_if_exception_type(
+                (RedisError, asyncio.TimeoutError, TimeoutError, OSError)
+            ),
             reraise=True,
         ):
             with attempt:
@@ -236,4 +238,3 @@ class RedisSemanticCache(CacheBackend):
             "timeouts": self._timeouts,
             "retries": self._retries,
         }
-

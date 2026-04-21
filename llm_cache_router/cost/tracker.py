@@ -74,4 +74,3 @@ class CostTracker:
         in_cost = (usage.input_tokens / 1_000_000) * pricing["input"]
         out_cost = (usage.output_tokens / 1_000_000) * pricing["output"]
         return in_cost + out_cost
-

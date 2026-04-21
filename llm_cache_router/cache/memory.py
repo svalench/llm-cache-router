@@ -134,8 +134,7 @@ class InMemorySemanticCache(CacheBackend):
         if overflow <= 0:
             return
         heap = [
-            (entry.hit_count, entry.created_at_ts, idx)
-            for idx, entry in enumerate(self._entries)
+            (entry.hit_count, entry.created_at_ts, idx) for idx, entry in enumerate(self._entries)
         ]
         heapq.heapify(heap)
         to_remove: set[int] = set()
@@ -160,4 +159,3 @@ class InMemorySemanticCache(CacheBackend):
             content = msg.get("content", "")
             chunks.append(f"{role}:{content}")
         return "\n".join(chunks).strip()
-

@@ -23,4 +23,3 @@ class CacheBackend(ABC):
 
     def stats(self) -> dict[str, int]:
         return {}
-

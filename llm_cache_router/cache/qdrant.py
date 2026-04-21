@@ -170,4 +170,3 @@ class QdrantSemanticCache(CacheBackend):
             content = msg.get("content", "")
             chunks.append(f"{role}:{content}")
         return "\n".join(chunks).strip()
-
