@@ -1,0 +1,11 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+recursive-include llm_cache_router py.typed
+recursive-include llm_cache_router *.py
+recursive-exclude tests *
+recursive-exclude examples *
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.egg-info
