@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import importlib
 from typing import Any, Protocol
 
 import numpy as np
 
+_sentence_transformers: Any | None
 try:
-    import sentence_transformers as _sentence_transformers  # type: ignore[import-untyped]
+    _sentence_transformers = importlib.import_module("sentence_transformers")
 except ImportError:  # pragma: no cover
     _sentence_transformers = None
 

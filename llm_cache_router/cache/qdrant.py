@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import time
 from typing import Any
@@ -10,9 +11,11 @@ from llm_cache_router.cache.base import CacheBackend
 from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
 from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
 
+_qdrant_client: Any | None
+_qdrant_models: Any | None
 try:
-    import qdrant_client as _qdrant_client  # type: ignore[import-untyped]
-    from qdrant_client.http import models as _qdrant_models  # type: ignore[import-untyped]
+    _qdrant_client = importlib.import_module("qdrant_client")
+    _qdrant_models = importlib.import_module("qdrant_client.http.models")
 except ImportError:  # pragma: no cover
     _qdrant_client = None
     _qdrant_models = None
