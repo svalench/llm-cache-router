@@ -48,6 +48,25 @@ class LLMResponse(BaseModel):
     raw: dict[str, Any] | None = None
 
 
+class LLMStreamChunk(BaseModel):
+    delta: str
+    provider_used: str
+    model_used: str
+    is_final: bool = False
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    cache_hit: bool = False
+    cache_similarity: float | None = None
+
+
+class ModelUsageStat(BaseModel):
+    requests: int = 0
+    total_cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 class RouterStats(BaseModel):
     cache_hit_rate: float
     total_requests: int
@@ -61,6 +80,7 @@ class RouterStats(BaseModel):
     monthly_spend_usd: float | None = None
     budget_remaining_usd: float | None = None
     monthly_budget_remaining_usd: float | None = None
+    model_usage: dict[str, ModelUsageStat] = Field(default_factory=dict)
 
 
 class CacheEntry(BaseModel):

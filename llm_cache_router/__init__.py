@@ -3,7 +3,7 @@ from llm_cache_router.middleware.fastapi import (
     cached_llm,
     mount_metrics_endpoint,
 )
-from llm_cache_router.models import CacheConfig, LLMResponse, RouterStats, RoutingStrategy
+from llm_cache_router.models import CacheConfig, LLMResponse, LLMStreamChunk, RouterStats, RoutingStrategy
 from llm_cache_router.observability.prometheus import HTTPMetricsCollector, build_prometheus_metrics
 from llm_cache_router.router import LLMRouter
 
@@ -12,6 +12,7 @@ __all__ = [
     "CacheConfig",
     "RoutingStrategy",
     "LLMResponse",
+    "LLMStreamChunk",
     "RouterStats",
     "cached_llm",
     "mount_metrics_endpoint",

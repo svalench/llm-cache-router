@@ -4,6 +4,7 @@ import time
 
 from llm_cache_router.models import LLMResponse
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig, ProviderError
+from llm_cache_router.providers.registry import register_provider
 
 
 class GeminiProvider(LLMProvider):
@@ -48,4 +49,7 @@ class GeminiProvider(LLMProvider):
             latency_ms=latency_ms,
             raw=data,
         )
+
+
+register_provider("gemini", GeminiProvider)
 

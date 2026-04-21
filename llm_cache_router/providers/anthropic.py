@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import time
+from typing import AsyncGenerator
 
-from llm_cache_router.models import LLMResponse
+from llm_cache_router.models import LLMResponse, LLMStreamChunk
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig, ProviderError
+from llm_cache_router.providers.registry import register_provider
 
 
 class AnthropicProvider(LLMProvider):
@@ -50,4 +53,81 @@ class AnthropicProvider(LLMProvider):
             latency_ms=latency_ms,
             raw=data,
         )
+
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[LLMStreamChunk, None]:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or 512,
+            "stream": True,
+        }
+        input_tokens = 0
+        output_tokens = 0
+        final_emitted = False
+        async with self._client.stream(
+            "POST",
+            f"{self._base_url}/messages",
+            headers={
+                "x-api-key": self.config.api_key or "",
+                "anthropic-version": "2023-06-01",
+            },
+            json=payload,
+        ) as response:
+            if response.status_code >= 400:
+                body = await response.aread()
+                raise ProviderError(f"Anthropic error: {response.status_code} {body.decode(errors='ignore')}")
+            event_type = ""
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                if line.startswith("event: "):
+                    event_type = line[7:].strip()
+                    continue
+                if not line.startswith("data: "):
+                    continue
+                data = json.loads(line[6:])
+                if event_type == "message_start":
+                    usage = data.get("message", {}).get("usage", {})
+                    input_tokens = int(usage.get("input_tokens", input_tokens))
+                elif event_type == "content_block_delta":
+                    delta = data.get("delta", {}).get("text", "")
+                    if delta:
+                        yield LLMStreamChunk(
+                            delta=delta,
+                            provider_used="anthropic",
+                            model_used=model,
+                            is_final=False,
+                        )
+                elif event_type == "message_delta":
+                    usage = data.get("usage", {})
+                    output_tokens = int(usage.get("output_tokens", output_tokens))
+                elif event_type == "message_stop":
+                    final_emitted = True
+                    yield LLMStreamChunk(
+                        delta="",
+                        provider_used="anthropic",
+                        model_used=model,
+                        is_final=True,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                    )
+        if not final_emitted:
+            yield LLMStreamChunk(
+                delta="",
+                provider_used="anthropic",
+                model_used=model,
+                is_final=True,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
+
+register_provider("anthropic", AnthropicProvider)
 

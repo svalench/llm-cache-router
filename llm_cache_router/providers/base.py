@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import AsyncGenerator
 
 import httpx
 
-from llm_cache_router.models import LLMResponse
+from llm_cache_router.models import LLMResponse, LLMStreamChunk
 
 
 @dataclass(slots=True)
@@ -37,6 +38,24 @@ class LLMProvider(ABC):
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[LLMStreamChunk, None]:
+        response = await self.complete(messages, model, temperature, max_tokens)
+        yield LLMStreamChunk(
+            delta=response.content,
+            provider_used=response.provider_used,
+            model_used=response.model_used,
+            is_final=True,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            cost_usd=response.cost_usd,
+        )
 
     @staticmethod
     def _extract_text_from_messages(messages: list[dict[str, str]]) -> str:

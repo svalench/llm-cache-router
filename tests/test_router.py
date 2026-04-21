@@ -63,3 +63,22 @@ def test_router_supports_minimax_and_qwen_provider_configs() -> None:
     assert "minimax" in router._providers  # noqa: SLF001
     assert "qwen" in router._providers  # noqa: SLF001
 
+
+@pytest.mark.asyncio
+async def test_model_usage_stats() -> None:
+    router = LLMRouter(
+        providers={"openai": {"api_key": "test", "models": ["gpt-4o", "gpt-4o-mini"]}},
+        cache=CacheConfig(backend="memory", min_query_length=1, embedding_model="hash"),
+    )
+    stub = StubProvider()
+    router._providers["openai"] = stub  # noqa: SLF001
+
+    messages = [{"role": "user", "content": "model usage stats"}]
+    await router.complete(messages=messages, model="gpt-4o")
+
+    stats = router.stats()
+    assert "openai/gpt-4o" in stats.model_usage
+    stat = stats.model_usage["openai/gpt-4o"]
+    assert stat.requests == 1
+    assert stat.input_tokens > 0
+
