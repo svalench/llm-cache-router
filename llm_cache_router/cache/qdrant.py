@@ -11,41 +11,28 @@ from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder,
 from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
 
 try:
-    from qdrant_client import AsyncQdrantClient as _AsyncQdrantClient
-    from qdrant_client.http.models import (
-        Direction as _Direction,
-    )
-    from qdrant_client.http.models import (
-        Distance as _Distance,
-    )
-    from qdrant_client.http.models import (
-        OrderBy as _OrderBy,
-    )
-    from qdrant_client.http.models import (
-        PointIdsList as _PointIdsList,
-    )
-    from qdrant_client.http.models import (
-        PointStruct as _PointStruct,
-    )
-    from qdrant_client.http.models import (
-        VectorParams as _VectorParams,
-    )
+    import qdrant_client as _qdrant_client  # type: ignore[import-untyped]
+    from qdrant_client.http import models as _qdrant_models  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
-    _AsyncQdrantClient = None
-    _Distance = None
-    _Direction = None
-    _OrderBy = None
-    _PointIdsList = None
-    _PointStruct = None
-    _VectorParams = None
+    _qdrant_client = None
+    _qdrant_models = None
 
-AsyncQdrantClient: Any = _AsyncQdrantClient
-Distance: Any = _Distance
-Direction: Any = _Direction
-OrderBy: Any = _OrderBy
-PointIdsList: Any = _PointIdsList
-PointStruct: Any = _PointStruct
-VectorParams: Any = _VectorParams
+if _qdrant_client is None or _qdrant_models is None:  # pragma: no cover
+    AsyncQdrantClient: Any = None
+    Distance: Any = None
+    Direction: Any = None
+    OrderBy: Any = None
+    PointIdsList: Any = None
+    PointStruct: Any = None
+    VectorParams: Any = None
+else:
+    AsyncQdrantClient = _qdrant_client.AsyncQdrantClient
+    Distance = _qdrant_models.Distance
+    Direction = _qdrant_models.Direction
+    OrderBy = _qdrant_models.OrderBy
+    PointIdsList = _qdrant_models.PointIdsList
+    PointStruct = _qdrant_models.PointStruct
+    VectorParams = _qdrant_models.VectorParams
 
 logger = logging.getLogger(__name__)
 

@@ -5,13 +5,14 @@ from typing import Any, Protocol
 import numpy as np
 
 try:
-    from sentence_transformers import (
-        SentenceTransformer as _SentenceTransformerClass,  # type: ignore[import-untyped]
-    )
+    import sentence_transformers as _sentence_transformers  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
-    _SentenceTransformerClass = None
+    _sentence_transformers = None
 
-SentenceTransformerClass: Any | None = _SentenceTransformerClass
+if _sentence_transformers is None:  # pragma: no cover
+    sentence_transformer_class: Any | None = None
+else:
+    sentence_transformer_class = _sentence_transformers.SentenceTransformer
 
 
 class EncoderProtocol(Protocol):
@@ -20,9 +21,9 @@ class EncoderProtocol(Protocol):
 
 class SentenceEncoder:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
-        if SentenceTransformerClass is None:  # pragma: no cover
+        if sentence_transformer_class is None:  # pragma: no cover
             raise RuntimeError("sentence-transformers is not installed")
-        self._model: Any = SentenceTransformerClass(model_name)
+        self._model: Any = sentence_transformer_class(model_name)
 
     def encode(self, text: str) -> np.ndarray:
         embedding = self._model.encode([text], normalize_embeddings=True)[0]
