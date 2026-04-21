@@ -54,12 +54,12 @@ class PricingManager:
 
     async def ensure_fresh(self) -> None:
         now = time.monotonic()
-        if now - self._loaded_at <= self._ttl_seconds:
+        if self._loaded_at > 0.0 and now - self._loaded_at <= self._ttl_seconds:
             return
 
         async with self._lock:
             now = time.monotonic()
-            if now - self._loaded_at <= self._ttl_seconds:
+            if self._loaded_at > 0.0 and now - self._loaded_at <= self._ttl_seconds:
                 return
             await self._fetch_remote()
 
