@@ -127,10 +127,6 @@ class QdrantSemanticCache(CacheBackend):
         await self._client.close()
 
     def stats(self) -> dict[str, int]:
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            self._total_vectors = asyncio.run(self._count_vectors())
         return {"total_vectors": self._total_vectors}
 
     async def _ensure_collection(self) -> None:

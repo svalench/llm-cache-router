@@ -94,7 +94,7 @@ class LLMRouter:
             return cached
         self._cache_misses += 1
 
-        provider_model_key = self._select_provider_model(model=model, messages=messages)
+        provider_model_key = self._select_provider_model(model=model)
         if self._strategy_type == RoutingStrategy.FALLBACK_CHAIN:
             response = await self._fallback.execute(
                 lambda pm: self._call_provider(
@@ -152,7 +152,7 @@ class LLMRouter:
             return
         self._cache_misses += 1
 
-        provider_model_key = self._select_provider_model(model=model, messages=messages)
+        provider_model_key = self._select_provider_model(model=model)
         provider_name, model_name = self._split_provider_model(provider_model_key, fallback_model=model)
         provider = self._providers[provider_name]
 
@@ -339,8 +339,7 @@ class LLMRouter:
                 keys.append(f"{provider_name}/{model_name}")
         return keys
 
-    def _select_provider_model(self, model: str, messages: list[dict[str, str]]) -> str:
-        del messages
+    def _select_provider_model(self, model: str) -> str:
         providers_for_model = self._model_to_provider_names.get(model, [])
         if not providers_for_model:
             # model может приходить в формате provider/model
