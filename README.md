@@ -1,71 +1,130 @@
 # llm-cache-router
 
-Лёгкая Python-библиотека для:
-- семантического кэширования LLM-запросов;
-- multi-provider роутинга;
-- трекинга стоимости и бюджетных лимитов.
+[![PyPI version](https://img.shields.io/pypi/v/llm-cache-router.svg)](https://pypi.org/project/llm-cache-router/)
+[![Python versions](https://img.shields.io/pypi/pyversions/llm-cache-router.svg)](https://pypi.org/project/llm-cache-router/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/svalench/llm-cache-router/actions/workflows/ci.yml/badge.svg)](https://github.com/svalench/llm-cache-router/actions/workflows/ci.yml)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-## Установка
+> A lightweight, production-ready Python library that combines **semantic caching**, **multi-provider LLM routing**, and **cost tracking** in a single async-first API. Cut your LLM bill, ship faster, and never hardcode a single provider again.
+
+---
+
+## Table of Contents
+
+- [Why llm-cache-router](#why-llm-cache-router)
+- [Features](#features)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Streaming](#streaming)
+- [Cache Warmup](#cache-warmup)
+- [Routing Strategies](#routing-strategies)
+- [Cache Backends](#cache-backends)
+- [Budget and Cost Tracking](#budget-and-cost-tracking)
+- [FastAPI Integration](#fastapi-integration)
+- [Supported Providers](#supported-providers)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Why llm-cache-router
+
+Calling LLMs directly is expensive, slow, and locks you into a single vendor. This library solves all three problems at once:
+
+- **Save money** — a semantic cache returns answers for near-duplicate queries without re-calling the provider, typically cutting spend by 30–70% on production workloads.
+- **Stay resilient** — swap providers on the fly, use fallback chains, and never take a full outage because one vendor is down.
+- **Control cost** — built-in daily/monthly budget guardrails with Prometheus metrics for every request.
+
+One dependency. Six providers. Three cache backends. Full async support.
+
+## Features
+
+- **Semantic cache** — vector-similarity matching via `sentence-transformers`, not just exact string hashing.
+- **Multi-provider routing** across OpenAI, Anthropic, Google Gemini, Ollama, MiniMax and Qwen (Dashscope).
+- **Three routing strategies**: `CHEAPEST_FIRST`, `FASTEST_FIRST`, `FALLBACK_CHAIN`.
+- **Pluggable cache backends**: in-memory (FAISS), Redis, Qdrant.
+- **Streaming** — native async SSE streaming for every provider, transparent to the cache layer.
+- **Cost tracker** with per-model pricing, daily/monthly budget limits and savings accounting.
+- **Cache warmup** with controlled concurrency for pre-production pre-loading.
+- **FastAPI middleware** + Prometheus metrics endpoint out of the box.
+- **Typed** — Pydantic v2 models everywhere, fully typed public API.
+- **Tested** — 10 test modules covering router, cache, providers, retry, warmup, and HTTP middleware.
+
+## Installation
 
 ```bash
 pip install llm-cache-router
-
-# опциональные бэкенды
-pip install "llm-cache-router[redis]"
-pip install "llm-cache-router[qdrant]"
-pip install "llm-cache-router[fastapi]"
-pip install "llm-cache-router[all]"
 ```
 
-## Быстрый старт — complete()
+Optional extras:
+
+```bash
+pip install "llm-cache-router[redis]"     # Redis cache backend
+pip install "llm-cache-router[qdrant]"    # Qdrant vector cache backend
+pip install "llm-cache-router[fastapi]"   # FastAPI middleware + Prometheus
+pip install "llm-cache-router[all]"       # everything above
+pip install "llm-cache-router[dev]"       # tests, ruff, mypy
+```
+
+Requires **Python 3.11+**.
+
+## Quickstart
 
 ```python
+import asyncio
 from llm_cache_router import CacheConfig, LLMRouter, RoutingStrategy
 
-router = LLMRouter(
-    providers={
-        "openai":    {"api_key": "sk-...",           "models": ["gpt-4o-mini"]},
-        "anthropic": {"api_key": "sk-ant-...",       "models": ["claude-3-5-sonnet"]},
-        "gemini":    {"api_key": "AIza...",          "models": ["gemini-1.5-flash"]},
-        "minimax":   {"api_key": "minimax-...",      "models": ["MiniMax-Text-01"]},
-        "qwen":      {"api_key": "dashscope-...",    "models": ["qwen-plus"]},
-        "ollama":    {"base_url": "http://localhost:11434", "models": ["llama3.2"]},
-    },
-    cache=CacheConfig(
-        backend="memory",
-        threshold=0.92,
-        ttl=3600,
-        max_entries=10_000,
-    ),
-    strategy=RoutingStrategy.CHEAPEST_FIRST,
-    budget={"daily_usd": 5.0, "monthly_usd": 50.0},
-)
 
-response = await router.complete(
-    messages=[{"role": "user", "content": "Что такое семантический кэш?"}],
-    model="gpt-4o-mini",
-)
-print(response.content, response.cache_hit, response.cost_usd)
+async def main() -> None:
+    router = LLMRouter(
+        providers={
+            "openai":    {"api_key": "sk-...",           "models": ["gpt-4o-mini"]},
+            "anthropic": {"api_key": "sk-ant-...",       "models": ["claude-3-5-sonnet"]},
+            "gemini":    {"api_key": "AIza...",          "models": ["gemini-1.5-flash"]},
+            "ollama":    {"base_url": "http://localhost:11434", "models": ["llama3.2"]},
+        },
+        cache=CacheConfig(
+            backend="memory",
+            threshold=0.92,       # cosine similarity threshold
+            ttl=3600,             # cache TTL in seconds
+            max_entries=10_000,
+        ),
+        strategy=RoutingStrategy.CHEAPEST_FIRST,
+        budget={"daily_usd": 5.0, "monthly_usd": 50.0},
+    )
+
+    response = await router.complete(
+        messages=[{"role": "user", "content": "What is a semantic cache?"}],
+        model="gpt-4o-mini",
+    )
+    print(response.content)
+    print(f"cache_hit={response.cache_hit} cost=${response.cost_usd:.6f}")
+
+
+asyncio.run(main())
 ```
 
-## Стриминг — stream()
+## Streaming
 
-Все провайдеры (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen) поддерживают
-нативный стриминг. Кэш работает прозрачно: при cache hit возвращается один
-финальный чанк, при cache miss — реальный поток от провайдера.
+All providers (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen) support native SSE streaming. The cache layer is transparent: on a cache hit you receive a single final chunk, on a miss — a real streaming response that is also written to the cache once complete.
 
 ```python
 async for chunk in router.stream(
-    messages=[{"role": "user", "content": "Объясни async/await в Python"}],
+    messages=[{"role": "user", "content": "Explain async/await in Python"}],
     model="gpt-4o-mini",
 ):
     print(chunk.delta, end="", flush=True)
     if chunk.is_final:
-        print()
-        print(f"provider={chunk.provider_used}, cost=${chunk.cost_usd:.6f}")
+        print(f"\nprovider={chunk.provider_used} cost=${chunk.cost_usd:.6f}")
 ```
 
-## Прогрев кэша — warmup()
+## Cache Warmup
+
+Pre-load the cache with known queries before traffic hits production:
 
 ```python
 from llm_cache_router.models import WarmupEntry
@@ -73,11 +132,11 @@ from llm_cache_router.models import WarmupEntry
 results = await router.warmup(
     entries=[
         WarmupEntry(
-            messages=[{"role": "user", "content": "Что такое RAG?"}],
+            messages=[{"role": "user", "content": "What is RAG?"}],
             model="gpt-4o-mini",
         ),
         WarmupEntry(
-            messages=[{"role": "user", "content": "Объясни векторные базы данных"}],
+            messages=[{"role": "user", "content": "Explain vector databases"}],
             model="gpt-4o-mini",
         ),
     ],
@@ -87,16 +146,15 @@ results = await router.warmup(
 print(results)  # {"warmed": 2, "skipped": 0, "failed": 0}
 ```
 
-## Стратегии роутинга
+## Routing Strategies
 
-| Стратегия | Описание |
+| Strategy | Description |
 |---|---|
-| `CHEAPEST_FIRST` | Выбирает самый дешёвый провайдер по текущим ценам |
-| `FASTEST_FIRST` | Выбирает провайдер с наименьшей накопленной latency |
-| `FALLBACK_CHAIN` | Пробует провайдеры последовательно, переходит к следующему при ошибке |
+| `CHEAPEST_FIRST` | Picks the cheapest provider/model by live pricing for each call. |
+| `FASTEST_FIRST` | Picks the provider with the lowest observed latency (EMA). |
+| `FALLBACK_CHAIN` | Tries providers in order, falls back on error/timeout. |
 
 ```python
-# FALLBACK_CHAIN
 router = LLMRouter(
     providers={
         "openai":    {"api_key": "sk-...",     "models": ["gpt-4o"]},
@@ -107,67 +165,74 @@ router = LLMRouter(
 )
 ```
 
-## Redis backend
+## Cache Backends
+
+### In-memory (FAISS)
+
+Default. Zero dependencies beyond the core install. Best for single-process apps and tests.
 
 ```python
-router = LLMRouter(
-    providers={"ollama": {"base_url": "http://localhost:11434", "models": ["llama3.2"]}},
-    cache=CacheConfig(
-        backend="redis",
-        redis_url="redis://localhost:6379/0",
-        redis_namespace="llm_cache_router_prod",
-        threshold=0.92,
-        ttl=3600,
-        max_entries=50_000,
-        redis_command_timeout_sec=1.5,
-        redis_retry_attempts=3,
-        redis_retry_backoff_sec=0.2,
-        redis_candidate_k=256,
-    ),
+cache=CacheConfig(backend="memory", threshold=0.92, ttl=3600, max_entries=10_000)
+```
+
+### Redis
+
+Production-grade distributed cache with LRU eviction, configurable timeouts, retry/backoff and bounded candidate set for vector search.
+
+```python
+cache=CacheConfig(
+    backend="redis",
+    redis_url="redis://localhost:6379/0",
+    redis_namespace="llm_cache_router_prod",
+    threshold=0.92,
+    ttl=3600,
+    max_entries=50_000,
+    redis_command_timeout_sec=1.5,
+    redis_retry_attempts=3,
+    redis_retry_backoff_sec=0.2,
+    redis_candidate_k=256,
 )
 ```
 
-## Qdrant backend
+### Qdrant
+
+Native vector database for very large caches (millions of entries) and cross-service deployments.
 
 ```bash
 pip install "llm-cache-router[qdrant]"
 ```
 
 ```python
-router = LLMRouter(
-    providers={"openai": {"api_key": "sk-...", "models": ["gpt-4o-mini"]}},
-    cache=CacheConfig(
-        backend="qdrant",
-        qdrant_url="http://localhost:6333",
-        qdrant_api_key=None,           # опционально для Qdrant Cloud
-        qdrant_collection="llm_cache",
-        threshold=0.92,
-        ttl=3600,
-        max_entries=100_000,
-    ),
+cache=CacheConfig(
+    backend="qdrant",
+    qdrant_url="http://localhost:6333",
+    qdrant_api_key=None,           # optional for Qdrant Cloud
+    qdrant_collection="llm_cache",
+    threshold=0.92,
+    ttl=3600,
+    max_entries=100_000,
 )
 ```
 
-## Бюджет и стоимость
+## Budget and Cost Tracking
+
+Set per-day and per-month USD limits — requests that would exceed the budget are rejected before hitting the provider.
 
 ```python
 router = LLMRouter(
     providers={...},
-    budget={
-        "daily_usd": 5.0,
-        "monthly_usd": 50.0,
-    },
+    budget={"daily_usd": 5.0, "monthly_usd": 50.0},
 )
 
 stats = router.stats()
-print(stats.total_cost_usd)
-print(stats.saved_cost_usd)          # сэкономлено через кэш
+print(stats.total_cost_usd)           # total spent since start
+print(stats.saved_cost_usd)           # saved via cache hits
 print(stats.daily_spend_usd)
-print(stats.budget_remaining_usd)    # None если лимит не задан
-print(stats.cache_hit_rate)          # 0.0–1.0
+print(stats.budget_remaining_usd)     # None if no limit is set
+print(stats.cache_hit_rate)           # 0.0–1.0
 ```
 
-## FastAPI интеграция
+## FastAPI Integration
 
 ```bash
 pip install "llm-cache-router[fastapi]"
@@ -185,41 +250,99 @@ add_http_metrics_middleware(app=app)
 mount_metrics_endpoint(app=app, router=router, path="/metrics")
 ```
 
-Метрики Prometheus:
-- `llm_router_http_requests_total{method,path,status}`
-- `llm_router_http_request_duration_seconds_*`
+Exposed Prometheus metrics:
 
-## Async context manager
+- `llm_router_http_requests_total{method,path,status}`
+- `llm_router_http_request_duration_seconds_*` (histogram)
+- `llm_router_cache_hits_total`, `llm_router_cache_misses_total`
+- `llm_router_cost_usd_total`, `llm_router_saved_cost_usd_total`
+
+## Async Context Manager
 
 ```python
 async with LLMRouter(providers={...}) as router:
     response = await router.complete(messages=[...], model="gpt-4o-mini")
-# close() вызывается автоматически
+# close() is called automatically — closes provider clients and cache connections
 ```
 
-## Структура проекта
+## Supported Providers
+
+| Provider | Streaming | Notes |
+|---|---|---|
+| OpenAI | yes | `gpt-4o`, `gpt-4o-mini`, `o1-*`, etc. |
+| Anthropic | yes | Claude 3.5 Sonnet/Haiku, Opus |
+| Google Gemini | yes | 1.5 Flash, 1.5 Pro |
+| Ollama | yes | Any locally-served model |
+| MiniMax | yes | `MiniMax-Text-01` and others |
+| Qwen (Dashscope) | yes | `qwen-plus`, `qwen-max`, etc. |
+
+Adding a new provider = subclass `LLMProvider`, register with `@register_provider("name")`. See `llm_cache_router/providers/base.py`.
+
+## Architecture
 
 ```text
 llm_cache_router/
-  cache/         — memory, redis, qdrant backends
-  providers/     — openai, anthropic, gemini, ollama, minimax, qwen
-  strategies/    — cheapest, fastest, fallback
-  embeddings/    — SentenceEncoder, HashingEncoder
-  cost/          — CostTracker с дневным/месячным бюджетом
-  middleware/    — FastAPI middleware + Prometheus
-  models.py
-  router.py
+  cache/          # memory (FAISS) / redis / qdrant backends
+  providers/      # openai, anthropic, gemini, ollama, minimax, qwen
+  strategies/     # cheapest, fastest, fallback
+  embeddings/     # SentenceEncoder, HashingEncoder
+  cost/           # CostTracker with daily/monthly budgets
+  middleware/     # FastAPI middleware
+  observability/  # Prometheus metrics
+  models.py       # Pydantic models (LLMResponse, LLMStreamChunk, ...)
+  router.py       # LLMRouter — public entrypoint
+  retry.py        # RetryConfig + exponential backoff
+  warmup.py       # async warmup helper
 ```
 
-## Тесты
+## Development
 
 ```bash
-pip install "llm-cache-router[dev]"
+git clone https://github.com/svalench/llm-cache-router.git
+cd llm-cache-router
+
+# using uv (recommended)
+uv sync --all-extras
+uv run pytest
+
+# or plain pip
+pip install -e ".[all,dev]"
 pytest
 ```
 
+Code quality is enforced in CI via:
+
+- `ruff check` (lint) and `ruff format --check` (style)
+- `mypy --ignore-missing-imports` (type check)
+- `pytest` on Python 3.11, 3.12, 3.13 with coverage
+
 ## Roadmap
 
-- v0.3: Django helpers;
-- v0.4: streaming retry (reconnect при обрыве SSE);
-- v1.0: OpenTelemetry трейсинг.
+- **v0.3** — Django helpers and middleware.
+- **v0.4** — Streaming retry (reconnect on SSE drop).
+- **v0.5** — Request tracing hooks (OpenTelemetry).
+- **v1.0** — Full OTel spans, pluggable pricing providers, cache invalidation API.
+
+## Contributing
+
+Pull requests are welcome. Please:
+
+1. Open an issue first for anything larger than a small bug fix.
+2. Add tests for new behaviour.
+3. Run `ruff check`, `ruff format`, `mypy` and `pytest` before pushing.
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+## 🇷🇺 Краткое описание (Russian)
+
+**llm-cache-router** — лёгкая Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
+
+```bash
+pip install llm-cache-router
+```
+
+Полная документация и примеры — выше (на английском).
