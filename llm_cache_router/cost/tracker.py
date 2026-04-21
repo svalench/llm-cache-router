@@ -43,14 +43,12 @@ class CostTracker:
             daily_limit = self.budget.get("daily_usd")
             if daily_limit is not None and self._daily_spend > float(daily_limit):
                 raise BudgetExceededError(
-                    f"Daily budget ${daily_limit} exceeded. "
-                    f"Spent: ${self._daily_spend:.6f}"
+                    f"Daily budget ${daily_limit} exceeded. Spent: ${self._daily_spend:.6f}"
                 )
             monthly_limit = self.budget.get("monthly_usd")
             if monthly_limit is not None and self._monthly_spend > float(monthly_limit):
                 raise BudgetExceededError(
-                    f"Monthly budget ${monthly_limit} exceeded. "
-                    f"Spent: ${self._monthly_spend:.6f}"
+                    f"Monthly budget ${monthly_limit} exceeded. Spent: ${self._monthly_spend:.6f}"
                 )
             return cost
 
