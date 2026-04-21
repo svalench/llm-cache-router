@@ -9,6 +9,7 @@ from llm_cache_router.models import LLMResponse, LLMStreamChunk
 class StubProvider:
     def __init__(self) -> None:
         self.calls = 0
+        self.stream_calls = 0
 
     async def complete(self, messages, model, temperature=0.0, max_tokens=None):  # noqa: ANN001,ANN201
         del messages, temperature, max_tokens
@@ -24,6 +25,19 @@ class StubProvider:
 
     async def close(self) -> None:
         return None
+
+    async def stream(self, messages, model, temperature=0.0, max_tokens=None):  # noqa: ANN001,ANN201
+        del messages, temperature, max_tokens
+        self.stream_calls += 1
+        yield LLMStreamChunk(delta="stub ", provider_used="ollama", model_used=model)
+        yield LLMStreamChunk(
+            delta="stream",
+            provider_used="ollama",
+            model_used=model,
+            is_final=True,
+            input_tokens=7,
+            output_tokens=3,
+        )
 
 
 class FailingStreamProvider:
@@ -134,11 +148,37 @@ async def test_model_usage_stats() -> None:
 
 @pytest.mark.asyncio
 async def test_async_context_manager() -> None:
+    close_calls = 0
     async with LLMRouter(
         providers={"openai": {"api_key": "test", "models": ["gpt-4o"]}},
     ) as router:
         assert router is not None
-    await router.close()
+        original_close = router.close
+
+        async def counting_close() -> None:
+            nonlocal close_calls
+            close_calls += 1
+            await original_close()
+
+        router.close = counting_close
+    assert close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_router_stream_returns_chunks() -> None:
+    router = LLMRouter(
+        providers={"openai": {"api_key": "test", "models": ["gpt-4o"]}},
+        cache=CacheConfig(backend="memory", min_query_length=1, embedding_model="hash"),
+    )
+    stub = StubProvider()
+    router._providers["openai"] = stub  # noqa: SLF001
+
+    messages = [{"role": "user", "content": "stream me"}]
+    chunks = [chunk async for chunk in router.stream(messages=messages, model="gpt-4o")]
+
+    assert stub.stream_calls == 1
+    assert len(chunks) >= 1
+    assert any(chunk.is_final for chunk in chunks)
 
 
 @pytest.mark.asyncio

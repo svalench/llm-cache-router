@@ -4,10 +4,10 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import numpy as np
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from llm_cache_router.cache.base import CacheBackend
 from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
@@ -218,26 +218,26 @@ class RedisSemanticCache(CacheBackend):
             raise ValueError(f"Unsupported redis method: {method_name}")
         method = methods[method_name]
         call: Callable[..., Awaitable[Any]] = method
-        async for attempt in AsyncRetrying(
-            stop=stop_after_attempt(max(1, self._retry_attempts)),
-            wait=wait_exponential(multiplier=self._retry_backoff_sec, min=0.05, max=1.0),
-            retry=retry_if_exception_type(
-                (RedisOperationError, asyncio.TimeoutError, TimeoutError, OSError)
-            ),
-            reraise=True,
-        ):
-            with attempt:
-                try:
-                    return await asyncio.wait_for(
-                        call(*args, **kwargs),
-                        timeout=self._command_timeout_sec,
-                    )
-                except TimeoutError:
-                    self._timeouts += 1
+        max_attempts = max(1, self._retry_attempts)
+        attempt_num = 1
+        while True:
+            try:
+                return await asyncio.wait_for(
+                    call(*args, **kwargs),
+                    timeout=self._command_timeout_sec,
+                )
+            except TimeoutError:
+                self._timeouts += 1
+                if attempt_num >= max_attempts:
                     raise
-                except (RedisOperationError, OSError):
-                    self._retries += 1
+            except (RedisOperationError, OSError):
+                self._retries += 1
+                if attempt_num >= max_attempts:
                     raise
+
+            backoff = self._retry_backoff_sec * (2 ** (attempt_num - 1))
+            await asyncio.sleep(min(1.0, max(0.05, backoff)))
+            attempt_num += 1
 
     def stats(self) -> dict[str, int]:
         return {
