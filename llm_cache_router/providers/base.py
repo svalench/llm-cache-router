@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import AsyncGenerator
 
 import httpx
 
 from llm_cache_router.models import LLMResponse, LLMStreamChunk
+from llm_cache_router.retry import RetryConfig
 
 
 @dataclass(slots=True)
@@ -15,6 +16,7 @@ class ProviderConfig:
     api_key: str | None = None
     base_url: str | None = None
     timeout: float = 30.0
+    retry: RetryConfig = field(default_factory=RetryConfig)
 
 
 class ProviderError(RuntimeError):
@@ -24,6 +26,7 @@ class ProviderError(RuntimeError):
 class LLMProvider(ABC):
     def __init__(self, config: ProviderConfig) -> None:
         self.config = config
+        self._config = config
         self._client = httpx.AsyncClient(timeout=self.config.timeout)
 
     @abstractmethod

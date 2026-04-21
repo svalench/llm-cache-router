@@ -82,3 +82,12 @@ async def test_model_usage_stats() -> None:
     assert stat.requests == 1
     assert stat.input_tokens > 0
 
+
+@pytest.mark.asyncio
+async def test_async_context_manager() -> None:
+    async with LLMRouter(
+        providers={"openai": {"api_key": "test", "models": ["gpt-4o"]}},
+    ) as router:
+        assert router is not None
+    await router.close()
+

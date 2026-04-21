@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any, AsyncGenerator
 
 from llm_cache_router.cache.base import CacheBackend
@@ -15,15 +17,18 @@ from llm_cache_router.models import (
     RouterStats,
     RoutingStrategy,
     TokenUsage,
+    WarmupEntry,
 )
 import llm_cache_router.providers  # noqa: F401
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig
 from llm_cache_router.providers.registry import get_provider_class
+from llm_cache_router.retry import RetryConfig
 from llm_cache_router.strategies.cheapest import CheapestFirstStrategy
 from llm_cache_router.strategies.fallback import FallbackChainStrategy
 from llm_cache_router.strategies.fastest import FastestFirstStrategy
 
 ProviderSettings = dict[str, dict[str, Any]]
+logger = logging.getLogger(__name__)
 
 
 class LLMRouter:
@@ -56,6 +61,18 @@ class LLMRouter:
         self._saved_cost_usd = 0.0
         self._provider_usage: dict[str, int] = {}
         self._model_usage: dict[str, ModelUsageStat] = {}
+
+    async def __aenter__(self) -> LLMRouter:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        del exc_type, exc_val, exc_tb
+        await self.close()
 
     async def complete(
         self,
@@ -238,6 +255,40 @@ class LLMRouter:
         for provider in self._providers.values():
             await provider.close()
 
+    async def warmup(
+        self,
+        entries: list[WarmupEntry],
+        *,
+        concurrency: int = 5,
+        skip_cached: bool = True,
+    ) -> dict[str, int]:
+        semaphore = asyncio.Semaphore(concurrency)
+        results = {"warmed": 0, "skipped": 0, "failed": 0}
+
+        async def _warm_one(entry: WarmupEntry) -> None:
+            async with semaphore:
+                if skip_cached:
+                    cached, _ = await self._cache.get(entry.messages)
+                    if cached is not None:
+                        results["skipped"] += 1
+                        return
+                try:
+                    await self.complete(
+                        messages=entry.messages,
+                        model=entry.model,
+                        temperature=entry.temperature,
+                        max_tokens=entry.max_tokens,
+                    )
+                    results["warmed"] += 1
+                    first_content = entry.messages[0].get("content", "") if entry.messages else ""
+                    logger.info("Cache warmed: %s", first_content[:60])
+                except Exception as exc:  # noqa: BLE001
+                    results["failed"] += 1
+                    logger.warning("Warmup failed for entry: %s", exc)
+
+        await asyncio.gather(*[_warm_one(entry) for entry in entries])
+        return results
+
     def _build_cache(self, config: CacheConfig) -> CacheBackend:
         if config.backend == "memory":
             return InMemorySemanticCache(config)
@@ -262,6 +313,11 @@ class LLMRouter:
                 api_key=raw_cfg.get("api_key"),
                 base_url=raw_cfg.get("base_url"),
                 timeout=float(raw_cfg.get("timeout", 30.0)),
+                retry=RetryConfig(
+                    attempts=int(raw_cfg.get("retry_attempts", 3)),
+                    base_delay_sec=float(raw_cfg.get("retry_base_delay", 0.5)),
+                    max_delay_sec=float(raw_cfg.get("retry_max_delay", 10.0)),
+                ),
             )
             provider_cls = get_provider_class(provider_name)
             instances[provider_name] = provider_cls(cfg)

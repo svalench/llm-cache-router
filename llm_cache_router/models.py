@@ -67,6 +67,13 @@ class ModelUsageStat(BaseModel):
     output_tokens: int = 0
 
 
+class WarmupEntry(BaseModel):
+    messages: list[dict[str, str]]
+    model: str
+    temperature: float = 0.0
+    max_tokens: int | None = None
+
+
 class RouterStats(BaseModel):
     cache_hit_rate: float
     total_requests: int

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import heapq
 import time
 
 import numpy as np
@@ -83,11 +84,7 @@ class InMemorySemanticCache(CacheBackend):
                 self._faiss_index.add(np.array([embedding], dtype=np.float32))
 
             if len(self._entries) > self._config.max_entries:
-                overflow = len(self._entries) - self._config.max_entries
-                self._evictions += overflow
-                self._entries = self._entries[-self._config.max_entries :]
-                self._vectors = self._vectors[-self._config.max_entries :]
-                self._rebuild_index()
+                self._evict_lfu()
 
     async def clear(self) -> None:
         async with self._lock:
@@ -131,6 +128,29 @@ class InMemorySemanticCache(CacheBackend):
         self._faiss_index = faiss.IndexFlatIP(self._dimension)
         if self._vectors:
             self._faiss_index.add(np.array(self._vectors, dtype=np.float32))
+
+    def _evict_lfu(self) -> None:
+        overflow = len(self._entries) - self._config.max_entries
+        if overflow <= 0:
+            return
+        heap = [
+            (entry.hit_count, entry.created_at_ts, idx)
+            for idx, entry in enumerate(self._entries)
+        ]
+        heapq.heapify(heap)
+        to_remove: set[int] = set()
+        for _ in range(overflow):
+            _, _, idx = heapq.heappop(heap)
+            to_remove.add(idx)
+        self._evictions += len(to_remove)
+        survived = [
+            (entry, vec)
+            for i, (entry, vec) in enumerate(zip(self._entries, self._vectors, strict=False))
+            if i not in to_remove
+        ]
+        self._entries = [pair[0] for pair in survived]
+        self._vectors = [pair[1] for pair in survived]
+        self._rebuild_index()
 
     @staticmethod
     def _messages_to_text(messages: list[dict[str, str]]) -> str:
