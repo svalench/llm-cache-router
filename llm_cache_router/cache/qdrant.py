@@ -52,7 +52,9 @@ logger = logging.getLogger(__name__)
 
 class QdrantSemanticCache(CacheBackend):
     def __init__(self, config: CacheConfig) -> None:
-        if AsyncQdrantClient is None or VectorParams is None or Distance is None:  # pragma: no cover
+        if (
+            AsyncQdrantClient is None or VectorParams is None or Distance is None
+        ):  # pragma: no cover
             raise RuntimeError(
                 "qdrant-client is required for QdrantSemanticCache. "
                 "Install with: pip install 'llm-cache-router[qdrant]'"
