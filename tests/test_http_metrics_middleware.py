@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import pytest
 
+from llm_cache_router import (
+    CacheConfig,
+    LLMRouter,
+    add_http_metrics_middleware,
+    mount_metrics_endpoint,
+)
+from llm_cache_router.middleware.fastapi import LLMCacheMiddleware
+
 fastapi = pytest.importorskip("fastapi")
 testclient = pytest.importorskip("fastapi.testclient")
-
-from llm_cache_router import CacheConfig, LLMRouter, add_http_metrics_middleware, mount_metrics_endpoint
-from llm_cache_router.middleware.fastapi import LLMCacheMiddleware
 
 
 def test_http_metrics_middleware_exposes_request_metrics() -> None:

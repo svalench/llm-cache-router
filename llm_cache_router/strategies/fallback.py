@@ -20,7 +20,7 @@ class FallbackChainStrategy:
         for provider_model in self.chain:
             try:
                 return await asyncio.wait_for(call_provider(provider_model), timeout=self.timeout)
-            except (TimeoutError, ProviderError, asyncio.TimeoutError) as exc:
+            except (TimeoutError, ProviderError) as exc:
                 errors.append(f"{provider_model}: {exc}")
         raise AllProvidersFailedError("; ".join(errors) or "All providers failed")
 

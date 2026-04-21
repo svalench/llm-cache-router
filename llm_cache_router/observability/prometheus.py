@@ -38,8 +38,8 @@ class HTTPMetricsCollector:
         with self._lock:
             for (method, path, status), value in sorted(self._requests_total.items()):
                 lines.append(
-                    'llm_router_http_requests_total{method="%s",path="%s",status="%s"} %s'
-                    % (method, _escape_label(path), status, value)
+                    'llm_router_http_requests_total'
+                    f'{{method="{method}",path="{_escape_label(path)}",status="{status}"}} {value}'
                 )
 
             lines.append(
@@ -50,21 +50,23 @@ class HTTPMetricsCollector:
                 for bucket in self._buckets:
                     bucket_value = self._duration_bucket.get((method, path, bucket), 0)
                     lines.append(
-                        'llm_router_http_request_duration_seconds_bucket{method="%s",path="%s",le="%s"} %s'
-                        % (method, _escape_label(path), bucket, bucket_value)
+                        'llm_router_http_request_duration_seconds_bucket'
+                        f'{{method="{method}",path="{_escape_label(path)}",le="{bucket}"}} {bucket_value}'
                     )
                 inf_value = self._duration_bucket.get((method, path, float("inf")), 0)
                 lines.append(
-                    'llm_router_http_request_duration_seconds_bucket{method="%s",path="%s",le="+Inf"} %s'
-                    % (method, _escape_label(path), inf_value)
+                    'llm_router_http_request_duration_seconds_bucket'
+                    f'{{method="{method}",path="{_escape_label(path)}",le="+Inf"}} {inf_value}'
                 )
                 lines.append(
-                    'llm_router_http_request_duration_seconds_sum{method="%s",path="%s"} %s'
-                    % (method, _escape_label(path), self._duration_sum[(method, path)])
+                    'llm_router_http_request_duration_seconds_sum'
+                    f'{{method="{method}",path="{_escape_label(path)}"}} '
+                    f'{self._duration_sum[(method, path)]}'
                 )
                 lines.append(
-                    'llm_router_http_request_duration_seconds_count{method="%s",path="%s"} %s'
-                    % (method, _escape_label(path), self._duration_count[(method, path)])
+                    'llm_router_http_request_duration_seconds_count'
+                    f'{{method="{method}",path="{_escape_label(path)}"}} '
+                    f'{self._duration_count[(method, path)]}'
                 )
         return "\n".join(lines)
 

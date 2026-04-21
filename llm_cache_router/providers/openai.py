@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from llm_cache_router.models import LLMResponse, LLMStreamChunk
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig, ProviderError

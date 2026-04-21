@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from llm_cache_router import CacheConfig, LLMRouter, RoutingStrategy, build_prometheus_metrics
-from llm_cache_router.observability.prometheus import HTTPMetricsCollector
 from llm_cache_router.models import LLMResponse
+from llm_cache_router.observability.prometheus import HTTPMetricsCollector
 
 
 class StubProvider:

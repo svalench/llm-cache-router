@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
+import llm_cache_router.providers  # noqa: F401
 from llm_cache_router.cache.base import CacheBackend
 from llm_cache_router.cache.memory import InMemorySemanticCache
 from llm_cache_router.cache.qdrant import QdrantSemanticCache
@@ -19,7 +21,6 @@ from llm_cache_router.models import (
     TokenUsage,
     WarmupEntry,
 )
-import llm_cache_router.providers  # noqa: F401
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig
 from llm_cache_router.providers.registry import get_provider_class
 from llm_cache_router.retry import RetryConfig

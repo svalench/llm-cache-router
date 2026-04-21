@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from typing import Type
-
 from llm_cache_router.providers.base import LLMProvider
 
-_REGISTRY: dict[str, Type[LLMProvider]] = {}
+_REGISTRY: dict[str, type[LLMProvider]] = {}
 
 
-def register_provider(name: str, cls: Type[LLMProvider]) -> None:
+def register_provider(name: str, cls: type[LLMProvider]) -> None:
     _REGISTRY[name] = cls
 
 
-def get_provider_class(name: str) -> Type[LLMProvider]:
+def get_provider_class(name: str) -> type[LLMProvider]:
     if name not in _REGISTRY:
         raise ValueError(
             f"Unsupported provider: '{name}'. "

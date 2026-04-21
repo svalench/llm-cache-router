@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from random import uniform
-from typing import Awaitable, Callable, TypeVar
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 

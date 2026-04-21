@@ -222,7 +222,7 @@ class RedisSemanticCache(CacheBackend):
                         method(*args, **kwargs),
                         timeout=self._command_timeout_sec,
                     )
-                except (asyncio.TimeoutError, TimeoutError):
+                except TimeoutError:
                     self._timeouts += 1
                     raise
                 except (RedisError, OSError):

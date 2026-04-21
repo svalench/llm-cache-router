@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from llm_cache_router.models import TokenUsage
 from llm_cache_router.strategies.cheapest import PRICING
@@ -16,8 +16,8 @@ class CostTracker:
         self._daily_spend = 0.0
         self._monthly_spend = 0.0
         self._total_spend = 0.0
-        self._reset_at = datetime.now(timezone.utc).date()
-        self._month_reset_at = datetime.now(timezone.utc).strftime("%Y-%m")
+        self._reset_at = datetime.now(UTC).date()
+        self._month_reset_at = datetime.now(UTC).strftime("%Y-%m")
 
     def record(self, provider: str, model: str, usage: TokenUsage) -> float:
         self._check_reset()
@@ -58,11 +58,11 @@ class CostTracker:
         }
 
     def _check_reset(self) -> None:
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         if today != self._reset_at:
             self._daily_spend = 0.0
             self._reset_at = today
-        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        current_month = datetime.now(UTC).strftime("%Y-%m")
         if current_month != self._month_reset_at:
             self._monthly_spend = 0.0
             self._month_reset_at = current_month
