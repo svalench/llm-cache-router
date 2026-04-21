@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from llm_cache_router.cache.memory import InMemorySemanticCache
@@ -39,4 +41,18 @@ async def test_memory_cache_skips_too_short_queries() -> None:
 
     assert entry is None
     assert similarity is None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_set_get() -> None:
+    cache = InMemorySemanticCache(CacheConfig(embedding_model="hash"))
+    response = LLMResponse(content="test", provider_used="p", model_used="m")
+    messages = [{"role": "user", "content": "hello world test concurrent"}]
+
+    set_tasks = [asyncio.create_task(cache.set(messages, response)) for _ in range(20)]
+    await asyncio.gather(*set_tasks)
+    get_tasks = [asyncio.create_task(cache.get(messages)) for _ in range(20)]
+    await asyncio.gather(*get_tasks)
+
+    assert len(cache._entries) <= cache._config.max_entries
 

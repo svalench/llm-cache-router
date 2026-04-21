@@ -155,7 +155,13 @@ class LLMRouter:
         if config.backend == "redis":
             return RedisSemanticCache(config)
         if config.backend == "qdrant":
-            return QdrantSemanticCache(config)
+            try:
+                return QdrantSemanticCache(config)
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    "Failed to initialize qdrant cache backend. "
+                    "Install optional dependency: pip install 'llm-cache-router[qdrant]'"
+                ) from exc
         raise ValueError(f"Unsupported cache backend: {config.backend}")
 
     @staticmethod

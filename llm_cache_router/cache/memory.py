@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 
 import numpy as np
@@ -17,6 +18,7 @@ except ImportError:  # pragma: no cover
 class InMemorySemanticCache(CacheBackend):
     def __init__(self, config: CacheConfig) -> None:
         self._config = config
+        self._lock = asyncio.Lock()
         self._entries: list[CacheEntry] = []
         self._faiss_index = None
         self._vectors: list[np.ndarray] = []
@@ -44,20 +46,21 @@ class InMemorySemanticCache(CacheBackend):
             return None, None
 
         embedding = self._encoder.encode(query_text)
-        now_ts = time.time()
-        self._purge_expired(now_ts)
-        if not self._entries:
-            return None, None
+        async with self._lock:
+            now_ts = time.time()
+            self._purge_expired(now_ts)
+            if not self._entries:
+                return None, None
 
-        score, idx = self._search_top1(embedding)
-        if idx < 0:
-            return None, None
-        if score < self._config.threshold:
-            return None, score
+            score, idx = self._search_top1(embedding)
+            if idx < 0:
+                return None, None
+            if score < self._config.threshold:
+                return None, score
 
-        entry = self._entries[idx]
-        entry.hit_count += 1
-        return entry, score
+            entry = self._entries[idx]
+            entry.hit_count += 1
+            return entry, score
 
     async def set(self, messages: list[dict[str, str]], response: LLMResponse) -> None:
         query_text = self._messages_to_text(messages)
@@ -73,22 +76,24 @@ class InMemorySemanticCache(CacheBackend):
             hit_count=0,
         )
 
-        self._entries.append(entry)
-        self._vectors.append(embedding.astype(np.float32))
-        if self._use_faiss and self._faiss_index is not None:
-            self._faiss_index.add(np.array([embedding], dtype=np.float32))
+        async with self._lock:
+            self._entries.append(entry)
+            self._vectors.append(embedding.astype(np.float32))
+            if self._use_faiss and self._faiss_index is not None:
+                self._faiss_index.add(np.array([embedding], dtype=np.float32))
 
-        if len(self._entries) > self._config.max_entries:
-            overflow = len(self._entries) - self._config.max_entries
-            self._evictions += overflow
-            self._entries = self._entries[-self._config.max_entries :]
-            self._vectors = self._vectors[-self._config.max_entries :]
-            self._rebuild_index()
+            if len(self._entries) > self._config.max_entries:
+                overflow = len(self._entries) - self._config.max_entries
+                self._evictions += overflow
+                self._entries = self._entries[-self._config.max_entries :]
+                self._vectors = self._vectors[-self._config.max_entries :]
+                self._rebuild_index()
 
     async def clear(self) -> None:
-        self._entries.clear()
-        self._vectors.clear()
-        self._rebuild_index()
+        async with self._lock:
+            self._entries.clear()
+            self._vectors.clear()
+            self._rebuild_index()
 
     def _search_top1(self, embedding: np.ndarray) -> tuple[float, int]:
         if self._use_faiss and self._faiss_index is not None and self._faiss_index.ntotal > 0:

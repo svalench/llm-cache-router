@@ -25,6 +25,9 @@ class CacheConfig(BaseModel):
     redis_retry_attempts: int = 3
     redis_retry_backoff_sec: float = 0.2
     redis_candidate_k: int | None = None
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str | None = None
+    qdrant_collection: str = "llm_cache_router"
 
 
 class TokenUsage(BaseModel):
