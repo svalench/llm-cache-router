@@ -1,7 +1,8 @@
 # llm-cache-router
 
-[![PyPI version](https://img.shields.io/pypi/v/llm-cache-router.svg)](https://pypi.org/project/llm-cache-router/)
+[![PyPI version](https://badge.fury.io/py/llm-cache-router.svg)](https://pypi.org/project/llm-cache-router/)
 [![Python versions](https://img.shields.io/pypi/pyversions/llm-cache-router.svg)](https://pypi.org/project/llm-cache-router/)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/llm-cache-router.svg)](https://pypi.org/project/llm-cache-router/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/svalench/llm-cache-router/actions/workflows/ci.yml/badge.svg)](https://github.com/svalench/llm-cache-router/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
@@ -22,6 +23,7 @@
 - [Cache Backends](#cache-backends)
 - [Budget and Cost Tracking](#budget-and-cost-tracking)
 - [FastAPI Integration](#fastapi-integration)
+- [Async Context Manager](#async-context-manager)
 - [Supported Providers](#supported-providers)
 - [Architecture](#architecture)
 - [Development](#development)
@@ -339,10 +341,18 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ## 🇷🇺 Краткое описание (Russian)
 
-**llm-cache-router** — лёгкая Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
+**llm-cache-router** — лёгкая production-ready Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
+
+**Установка:**
 
 ```bash
 pip install llm-cache-router
+
+# с дополнительными бэкендами
+pip install "llm-cache-router[redis]"
+pip install "llm-cache-router[qdrant]"
+pip install "llm-cache-router[fastapi]"
+pip install "llm-cache-router[all]"
 ```
 
-Полная документация и примеры — выше (на английском).
+Требуется **Python 3.11+**. Полная документация и примеры — выше (на английском).
