@@ -15,6 +15,7 @@ from llm_cache_router.models import (
     CacheConfig,
     LLMResponse,
     LLMStreamChunk,
+    Message,
     ModelUsageStat,
     RouterStats,
     RoutingStrategy,
@@ -78,14 +79,14 @@ class LLMRouter:
 
     async def complete(
         self,
-        messages: list[dict[str, str]],
+        messages: list[Message],
         model: str,
         temperature: float = 0.0,
         max_tokens: int | None = None,
     ) -> LLMResponse:
         await self._increment_total_requests()
 
-        cache_entry, similarity = await self._cache.get(messages)
+        cache_entry, similarity = await self._cache.get(messages, model=model)
         if cache_entry is not None:
             await self._record_cache_hit(cache_entry.response.cost_usd)
             cached = cache_entry.response.model_copy(deep=True)
@@ -126,19 +127,19 @@ class LLMRouter:
         if self._strategy_type == RoutingStrategy.FASTEST_FIRST:
             self._fastest.observe(f"{provider_name}/{model_name}", response.latency_ms)
 
-        await self._cache.set(messages, response)
+        await self._cache.set(messages, response, model=model)
         return response
 
     async def stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[Message],
         model: str,
         temperature: float = 0.0,
         max_tokens: int | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         await self._increment_total_requests()
 
-        cache_entry, similarity = await self._cache.get(messages)
+        cache_entry, similarity = await self._cache.get(messages, model=model)
         if cache_entry is not None:
             await self._record_cache_hit(cache_entry.response.cost_usd)
             yield LLMStreamChunk(
@@ -167,6 +168,7 @@ class LLMRouter:
                         provider=provider,
                         provider_name=provider_name,
                         model_name=model_name,
+                        cache_model=model,
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
@@ -190,6 +192,7 @@ class LLMRouter:
             provider=provider,
             provider_name=provider_name,
             model_name=model_name,
+            cache_model=model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -256,7 +259,7 @@ class LLMRouter:
         async def _warm_one(entry: WarmupEntry) -> None:
             async with semaphore:
                 if skip_cached:
-                    cached, _ = await self._cache.get(entry.messages)
+                    cached, _ = await self._cache.get(entry.messages, model=entry.model)
                     if cached is not None:
                         results["skipped"] += 1
                         return
@@ -347,7 +350,7 @@ class LLMRouter:
         self,
         provider_model_key: str,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[Message],
         temperature: float,
         max_tokens: int | None,
     ) -> LLMResponse:
@@ -370,7 +373,8 @@ class LLMRouter:
         provider: LLMProvider,
         provider_name: str,
         model_name: str,
-        messages: list[dict[str, str]],
+        cache_model: str,
+        messages: list[Message],
         temperature: float,
         max_tokens: int | None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
@@ -405,7 +409,7 @@ class LLMRouter:
                 await self._record_total_cost(full_response.cost_usd)
                 await self._record_usage(provider_name, model_name, full_response)
                 chunk.cost_usd = full_response.cost_usd
-                await self._cache.set(messages, full_response)
+                await self._cache.set(messages, full_response, model=cache_model)
                 final_recorded = True
 
             yield chunk
@@ -420,7 +424,7 @@ class LLMRouter:
                 output_tokens=0,
             )
             await self._record_usage(provider_name, model_name, full_response)
-            await self._cache.set(messages, full_response)
+            await self._cache.set(messages, full_response, model=cache_model)
             yield LLMStreamChunk(
                 delta="",
                 provider_used=provider_name,

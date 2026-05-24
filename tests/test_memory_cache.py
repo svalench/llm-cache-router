@@ -5,7 +5,22 @@ import asyncio
 import pytest
 
 from llm_cache_router.cache.memory import InMemorySemanticCache
-from llm_cache_router.models import CacheConfig, LLMResponse
+from llm_cache_router.models import CacheConfig, LLMResponse, Message
+
+
+def _multimodal_messages(text: str, image_data: str) -> list[Message]:
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_data}"},
+                },
+            ],
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -78,4 +93,54 @@ async def test_lfu_eviction_removes_least_used() -> None:
     queries = [entry.query for entry in cache._entries]
     assert any("number 0" in query for query in queries)
     assert cache.stats()["evictions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_memory_cache_different_images_do_not_hit() -> None:
+    cache = InMemorySemanticCache(
+        CacheConfig(backend="memory", threshold=1.01, min_query_length=1, embedding_model="hash")
+    )
+    text = "что на картинке describe image"
+    messages_a = _multimodal_messages(text, "QUFB")
+    messages_b = _multimodal_messages(text, "QkJC")
+    response = LLMResponse(content="a", provider_used="openai", model_used="gpt-4o-mini")
+
+    await cache.set(messages_a, response, model="gpt-4o-mini")
+    entry, _ = await cache.get(messages_b, model="gpt-4o-mini")
+
+    assert entry is None
+    assert "QUFB" not in cache._entries[0].query
+    assert "QkJC" not in cache._entries[0].query
+
+
+@pytest.mark.asyncio
+async def test_memory_cache_same_image_hits() -> None:
+    cache = InMemorySemanticCache(
+        CacheConfig(backend="memory", threshold=0.7, min_query_length=1, embedding_model="hash")
+    )
+    text = "что на картинке describe image same"
+    image = "SUFNRQ=="
+    messages = _multimodal_messages(text, image)
+    response = LLMResponse(content="ok", provider_used="openai", model_used="gpt-4o-mini")
+
+    await cache.set(messages, response, model="gpt-4o-mini")
+    entry, similarity = await cache.get(messages, model="gpt-4o-mini")
+
+    assert entry is not None
+    assert similarity is not None
+    assert similarity >= 0.99
+
+
+@pytest.mark.asyncio
+async def test_memory_cache_model_isolation() -> None:
+    cache = InMemorySemanticCache(
+        CacheConfig(backend="memory", threshold=0.7, min_query_length=1, embedding_model="hash")
+    )
+    messages = [{"role": "user", "content": "same prompt for model isolation test"}]
+    response = LLMResponse(content="ok", provider_used="openai", model_used="gpt-4o")
+
+    await cache.set(messages, response, model="gpt-4o")
+    entry, _ = await cache.get(messages, model="gpt-4o-mini")
+
+    assert entry is None
 

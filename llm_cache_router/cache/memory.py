@@ -8,7 +8,7 @@ import numpy as np
 
 from llm_cache_router.cache.base import CacheBackend
 from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
-from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
+from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse, Message
 
 try:
     import faiss  # type: ignore
@@ -40,7 +40,12 @@ class InMemorySemanticCache(CacheBackend):
         self._evictions = 0
         self._expired_removed = 0
 
-    async def get(self, messages: list[dict[str, str]]) -> tuple[CacheEntry | None, float | None]:
+    async def get(
+        self,
+        messages: list[Message],
+        *,
+        model: str | None = None,
+    ) -> tuple[CacheEntry | None, float | None]:
         query_text = self._messages_to_text(messages)
         if len(query_text.strip()) < self._config.min_query_length:
             return None, None
@@ -54,7 +59,7 @@ class InMemorySemanticCache(CacheBackend):
             if not self._entries:
                 return None, None
 
-            score, idx = self._search_top1(embedding)
+            score, idx = self._search_top1(embedding, model=model)
             if idx < 0:
                 return None, None
             if score < self._config.threshold:
@@ -64,7 +69,13 @@ class InMemorySemanticCache(CacheBackend):
             entry.hit_count += 1
             return entry, score
 
-    async def set(self, messages: list[dict[str, str]], response: LLMResponse) -> None:
+    async def set(
+        self,
+        messages: list[Message],
+        response: LLMResponse,
+        *,
+        model: str | None = None,
+    ) -> None:
         query_text = self._messages_to_text(messages)
         if len(query_text.strip()) < self._config.min_query_length:
             return
@@ -76,6 +87,7 @@ class InMemorySemanticCache(CacheBackend):
             created_at_ts=time.time(),
             ttl=self._config.ttl,
             hit_count=0,
+            model=model,
         )
 
         async with self._lock:
@@ -93,15 +105,40 @@ class InMemorySemanticCache(CacheBackend):
             self._vectors.clear()
             self._rebuild_index()
 
-    def _search_top1(self, embedding: np.ndarray) -> tuple[float, int]:
+    def _search_top1(self, embedding: np.ndarray, *, model: str | None) -> tuple[float, int]:
+        best_score = -1.0
+        best_idx = -1
+
         if self._use_faiss and self._faiss_index is not None and self._faiss_index.ntotal > 0:
-            scores, indices = self._faiss_index.search(np.array([embedding], dtype=np.float32), k=1)
-            return float(scores[0][0]), int(indices[0][0])
+            k = min(self._faiss_index.ntotal, len(self._entries))
+            scores, indices = self._faiss_index.search(
+                np.array([embedding], dtype=np.float32),
+                k=k,
+            )
+            for raw_score, raw_idx in zip(scores[0], indices[0], strict=False):
+                idx = int(raw_idx)
+                if idx < 0 or idx >= len(self._entries):
+                    continue
+                entry = self._entries[idx]
+                if not self._model_matches(entry.model, model):
+                    continue
+                score = float(raw_score)
+                if score > best_score:
+                    best_score = score
+                    best_idx = idx
+            return best_score, best_idx
 
         matrix = np.vstack(self._vectors).astype(np.float32)
         scores = matrix @ embedding
-        idx = int(np.argmax(scores))
-        return float(scores[idx]), idx
+        for idx, score in enumerate(scores):
+            entry = self._entries[idx]
+            if not self._model_matches(entry.model, model):
+                continue
+            value = float(score)
+            if value > best_score:
+                best_score = value
+                best_idx = idx
+        return best_score, best_idx
 
     def _purge_expired(self, now_ts: float) -> None:
         old_size = len(self._entries)
@@ -151,12 +188,3 @@ class InMemorySemanticCache(CacheBackend):
         self._entries = [pair[0] for pair in survived]
         self._vectors = [pair[1] for pair in survived]
         self._rebuild_index()
-
-    @staticmethod
-    def _messages_to_text(messages: list[dict[str, str]]) -> str:
-        chunks = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            chunks.append(f"{role}:{content}")
-        return "\n".join(chunks).strip()

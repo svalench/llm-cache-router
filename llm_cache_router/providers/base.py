@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from llm_cache_router.models import LLMResponse, LLMStreamChunk
+from llm_cache_router.models import LLMResponse, LLMStreamChunk, Message
 from llm_cache_router.retry import RetryConfig
 
 
@@ -31,7 +31,7 @@ class LLMProvider(ABC):
     @abstractmethod
     async def complete(
         self,
-        messages: list[dict[str, str]],
+        messages: list[Message],
         model: str,
         temperature: float = 0.0,
         max_tokens: int | None = None,
@@ -43,7 +43,7 @@ class LLMProvider(ABC):
 
     async def stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[Message],
         model: str,
         temperature: float = 0.0,
         max_tokens: int | None = None,
@@ -59,6 +59,17 @@ class LLMProvider(ABC):
             cost_usd=response.cost_usd,
         )
 
-    @staticmethod
-    def _extract_text_from_messages(messages: list[dict[str, str]]) -> str:
-        return "\n".join(m.get("content", "") for m in messages if m.get("content"))
+    @classmethod
+    def _extract_text_from_messages(cls, messages: list[Message]) -> str:
+        parts: list[str] = []
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str) and content:
+                parts.append(content)
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", "")
+                        if text:
+                            parts.append(text)
+        return "\n".join(parts)

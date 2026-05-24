@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from llm_cache_router.cache.base import CacheBackend
 from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
-from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
+from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse, Message
 
 _qdrant_client: Any | None
 _qdrant_models: Any | None
@@ -24,6 +24,9 @@ if _qdrant_client is None or _qdrant_models is None:  # pragma: no cover
     AsyncQdrantClient: Any = None
     Distance: Any = None
     Direction: Any = None
+    FieldCondition: Any = None
+    Filter: Any = None
+    MatchValue: Any = None
     OrderBy: Any = None
     PointIdsList: Any = None
     PointStruct: Any = None
@@ -32,6 +35,9 @@ else:
     AsyncQdrantClient = _qdrant_client.AsyncQdrantClient
     Distance = _qdrant_models.Distance
     Direction = _qdrant_models.Direction
+    FieldCondition = _qdrant_models.FieldCondition
+    Filter = _qdrant_models.Filter
+    MatchValue = _qdrant_models.MatchValue
     OrderBy = _qdrant_models.OrderBy
     PointIdsList = _qdrant_models.PointIdsList
     PointStruct = _qdrant_models.PointStruct
@@ -69,7 +75,12 @@ class QdrantSemanticCache(CacheBackend):
             except Exception:  # pragma: no cover
                 self._encoder = HashingEncoder(self._dimension)
 
-    async def get(self, messages: list[dict[str, str]]) -> tuple[CacheEntry | None, float | None]:
+    async def get(
+        self,
+        messages: list[Message],
+        *,
+        model: str | None = None,
+    ) -> tuple[CacheEntry | None, float | None]:
         query_text = self._messages_to_text(messages)
         if len(query_text.strip()) < self._config.min_query_length:
             return None, None
@@ -77,13 +88,17 @@ class QdrantSemanticCache(CacheBackend):
         await self._ensure_collection()
         embedding = self._encoder.encode(query_text).tolist()
         qdrant_client: Any = self._client
-        results = await qdrant_client.search(
-            collection_name=self._collection_name,
-            query_vector=embedding,
-            limit=1,
-            with_payload=True,
-            score_threshold=self._config.threshold,
-        )
+        search_kwargs: dict[str, Any] = {
+            "collection_name": self._collection_name,
+            "query_vector": embedding,
+            "limit": 1,
+            "with_payload": True,
+            "score_threshold": self._config.threshold,
+        }
+        query_filter = self._build_model_filter(model)
+        if query_filter is not None:
+            search_kwargs["query_filter"] = query_filter
+        results = await qdrant_client.search(**search_kwargs)
         if not results:
             return None, None
 
@@ -107,7 +122,13 @@ class QdrantSemanticCache(CacheBackend):
         )
         return entry, score
 
-    async def set(self, messages: list[dict[str, str]], response: LLMResponse) -> None:
+    async def set(
+        self,
+        messages: list[Message],
+        response: LLMResponse,
+        *,
+        model: str | None = None,
+    ) -> None:
         query_text = self._messages_to_text(messages)
         if len(query_text.strip()) < self._config.min_query_length:
             return
@@ -121,6 +142,7 @@ class QdrantSemanticCache(CacheBackend):
             created_at_ts=time.time(),
             ttl=self._config.ttl,
             hit_count=0,
+            model=model,
         )
         payload = {
             "query": entry.query,
@@ -128,6 +150,7 @@ class QdrantSemanticCache(CacheBackend):
             "created_at_ts": entry.created_at_ts,
             "ttl": entry.ttl,
             "hit_count": entry.hit_count,
+            "model": entry.model,
         }
 
         await self._client.upsert(
@@ -217,15 +240,20 @@ class QdrantSemanticCache(CacheBackend):
                 created_at_ts=float(payload["created_at_ts"]),
                 ttl=int(payload["ttl"]),
                 hit_count=int(payload.get("hit_count", 0)),
+                model=payload.get("model"),
             )
         except (KeyError, TypeError, ValueError):
             return None
 
     @staticmethod
-    def _messages_to_text(messages: list[dict[str, str]]) -> str:
-        chunks = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            chunks.append(f"{role}:{content}")
-        return "\n".join(chunks).strip()
+    def _build_model_filter(model: str | None) -> Any | None:
+        if model is None or Filter is None or FieldCondition is None or MatchValue is None:
+            return None
+        return Filter(
+            must=[
+                FieldCondition(
+                    key="model",
+                    match=MatchValue(value=model),
+                )
+            ]
+        )

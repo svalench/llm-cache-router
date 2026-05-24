@@ -1,12 +1,28 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import pytest
 
 from llm_cache_router.cache.redis import RedisSemanticCache
-from llm_cache_router.models import CacheConfig, LLMResponse
+from llm_cache_router.models import CacheConfig, LLMResponse, Message
+
+
+def _multimodal_messages(text: str, image_data: str) -> list[Message]:
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_data}"},
+                },
+            ],
+        }
+    ]
 
 
 class FakeAsyncRedis:
@@ -171,4 +187,37 @@ async def test_redis_cache_candidate_k_limits_search_space() -> None:
     entry, _ = await cache.get([{"role": "user", "content": "older semantic request"}])
 
     assert entry is None
+
+
+@pytest.mark.asyncio
+async def test_redis_cache_model_isolation_and_media_hash() -> None:
+    fake_redis = FakeAsyncRedis()
+    cache = RedisSemanticCache(
+        CacheConfig(
+            backend="redis",
+            threshold=0.7,
+            min_query_length=1,
+            embedding_model="hash",
+            redis_namespace="test_model_media",
+        ),
+        redis_client=fake_redis,
+    )
+    text = "redis multimodal cache key test"
+    messages = _multimodal_messages(text, "UkVESVM=")
+    response = LLMResponse(content="ok", provider_used="openai", model_used="gpt-4o")
+
+    await cache.set(messages, response, model="gpt-4o")
+    stored_key = next(key for key in fake_redis._kv if ":entry:" in key)
+    payload = json.loads(fake_redis._kv[stored_key][0])
+    assert payload["model"] == "gpt-4o"
+    assert "UkVESVM=" not in payload["query"]
+    assert "img:" in payload["query"]
+
+    cross_model, _ = await cache.get(messages, model="gpt-4o-mini")
+    assert cross_model is None
+
+    same_model, similarity = await cache.get(messages, model="gpt-4o")
+    assert same_model is not None
+    assert similarity is not None
+    assert similarity > 0.99
 

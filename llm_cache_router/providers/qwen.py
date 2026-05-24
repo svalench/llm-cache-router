@@ -4,7 +4,7 @@ import json
 import time
 from collections.abc import AsyncGenerator
 
-from llm_cache_router.models import LLMResponse, LLMStreamChunk
+from llm_cache_router.models import LLMResponse, LLMStreamChunk, Message
 from llm_cache_router.providers.base import LLMProvider, ProviderConfig, ProviderError
 from llm_cache_router.providers.registry import register_provider
 from llm_cache_router.retry import with_retry
@@ -23,7 +23,7 @@ class QwenProvider(LLMProvider):
 
     async def complete(
         self,
-        messages: list[dict[str, str]],
+        messages: list[Message],
         model: str,
         temperature: float = 0.0,
         max_tokens: int | None = None,
@@ -66,7 +66,7 @@ class QwenProvider(LLMProvider):
 
     async def stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[Message],
         model: str,
         temperature: float = 0.0,
         max_tokens: int | None = None,

@@ -47,11 +47,16 @@ class FakeAsyncQdrantClient:
         limit: int,
         with_payload: bool,
         score_threshold: float | None = None,
+        query_filter: dict | None = None,
     ) -> list[SimpleNamespace]:
         del with_payload
         points = self.collections.get(collection_name, [])
         ranked: list[tuple[float, dict]] = []
         for point in points:
+            if query_filter is not None:
+                expected_model = query_filter.get("model")
+                if expected_model is not None and point["payload"].get("model") != expected_model:
+                    continue
             score = self._cosine(query_vector, point["vector"])
             if score_threshold is not None and score < score_threshold:
                 continue
@@ -129,3 +134,54 @@ async def test_qdrant_cache_unit_flow(monkeypatch: pytest.MonkeyPatch) -> None:
 
     await cache.close()
     assert cache._client.closed is True
+
+
+@pytest.mark.asyncio
+async def test_qdrant_cache_model_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(qdrant_module, "AsyncQdrantClient", FakeAsyncQdrantClient)
+    monkeypatch.setattr(qdrant_module, "Distance", FakeDistance)
+    monkeypatch.setattr(qdrant_module, "VectorParams", FakeVectorParams)
+    monkeypatch.setattr(qdrant_module, "PointStruct", FakePointStruct)
+    monkeypatch.setattr(qdrant_module, "Filter", dict)
+    monkeypatch.setattr(qdrant_module, "FieldCondition", dict)
+    monkeypatch.setattr(qdrant_module, "MatchValue", dict)
+
+    original_build_filter = qdrant_module.QdrantSemanticCache._build_model_filter
+
+    def _fake_build_model_filter(model: str | None):
+        if model is None:
+            return None
+        return {"model": model}
+
+    monkeypatch.setattr(
+        qdrant_module.QdrantSemanticCache,
+        "_build_model_filter",
+        staticmethod(_fake_build_model_filter),
+    )
+
+    cache = qdrant_module.QdrantSemanticCache(
+        CacheConfig(
+            backend="qdrant",
+            threshold=0.7,
+            min_query_length=1,
+            embedding_model="hash",
+            qdrant_collection="test_qdrant_model_scope",
+        )
+    )
+    messages = [{"role": "user", "content": "qdrant model isolation test"}]
+    response = LLMResponse(content="ok", provider_used="openai", model_used="gpt-4o")
+
+    await cache.set(messages, response, model="gpt-4o")
+    cross_model, _ = await cache.get(messages, model="gpt-4o-mini")
+    assert cross_model is None
+
+    same_model, score = await cache.get(messages, model="gpt-4o")
+    assert same_model is not None
+    assert score is not None
+    assert score >= 0.99
+
+    monkeypatch.setattr(
+        qdrant_module.QdrantSemanticCache,
+        "_build_model_filter",
+        original_build_filter,
+    )

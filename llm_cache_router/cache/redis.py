@@ -11,7 +11,7 @@ import numpy as np
 
 from llm_cache_router.cache.base import CacheBackend
 from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
-from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse
+from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse, Message
 
 redis_asyncio: Any
 RedisOperationError: type[Exception]
@@ -59,7 +59,12 @@ class RedisSemanticCache(CacheBackend):
         self._redis = redis_asyncio.from_url(config.redis_url, decode_responses=True)
         self._owns_client = True
 
-    async def get(self, messages: list[dict[str, str]]) -> tuple[CacheEntry | None, float | None]:
+    async def get(
+        self,
+        messages: list[Message],
+        *,
+        model: str | None = None,
+    ) -> tuple[CacheEntry | None, float | None]:
         query_text = self._messages_to_text(messages)
         if len(query_text.strip()) < self._config.min_query_length:
             return None, None
@@ -83,6 +88,8 @@ class RedisSemanticCache(CacheBackend):
                 continue
             payload = json.loads(raw)
             entry = self._entry_from_payload(payload)
+            if not self._model_matches(entry.model, model):
+                continue
             if entry.is_expired(now_ts):
                 stale_ids.append(entry_id)
                 await self._redis_call("delete", self._entry_key(entry_id))
@@ -105,7 +112,13 @@ class RedisSemanticCache(CacheBackend):
         await self._persist_entry(best_entry, refresh_score=False)
         return best_entry, best_score
 
-    async def set(self, messages: list[dict[str, str]], response: LLMResponse) -> None:
+    async def set(
+        self,
+        messages: list[Message],
+        response: LLMResponse,
+        *,
+        model: str | None = None,
+    ) -> None:
         query_text = self._messages_to_text(messages)
         if len(query_text.strip()) < self._config.min_query_length:
             return
@@ -118,6 +131,7 @@ class RedisSemanticCache(CacheBackend):
             created_at_ts=now_ts,
             ttl=self._config.ttl,
             hit_count=0,
+            model=model,
         )
         await self._persist_entry(entry, refresh_score=True)
         await self._trim_max_entries()
@@ -153,6 +167,7 @@ class RedisSemanticCache(CacheBackend):
             "created_at_ts": entry.created_at_ts,
             "ttl": entry.ttl,
             "hit_count": entry.hit_count,
+            "model": entry.model,
             "response": entry.response.model_dump(),
         }
         await self._redis_call("set", key, json.dumps(payload), ex=entry.ttl)
@@ -183,16 +198,8 @@ class RedisSemanticCache(CacheBackend):
             created_at_ts=float(payload["created_at_ts"]),
             ttl=int(payload["ttl"]),
             hit_count=int(payload.get("hit_count", 0)),
+            model=payload.get("model"),
         )
-
-    @staticmethod
-    def _messages_to_text(messages: list[dict[str, str]]) -> str:
-        parts: list[str] = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            parts.append(f"{role}:{content}")
-        return "\n".join(parts).strip()
 
     @staticmethod
     def _cosine(a: np.ndarray, b: np.ndarray) -> float:

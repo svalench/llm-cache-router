@@ -114,6 +114,26 @@ async def test_router_returns_cache_hit_on_second_call() -> None:
     assert stats.daily_spend_usd is not None
 
 
+@pytest.mark.asyncio
+async def test_router_does_not_cache_hit_across_models() -> None:
+    router = LLMRouter(
+        providers={
+            "openai": {"api_key": "test", "models": ["gpt-4o", "gpt-4o-mini"]},
+        },
+        cache=CacheConfig(backend="memory", min_query_length=1, embedding_model="hash"),
+    )
+    stub = StubProvider()
+    router._providers["openai"] = stub  # noqa: SLF001
+
+    messages = [{"role": "user", "content": "один и тот же prompt для разных моделей"}]
+    first = await router.complete(messages=messages, model="gpt-4o")
+    second = await router.complete(messages=messages, model="gpt-4o-mini")
+
+    assert first.cache_hit is False
+    assert second.cache_hit is False
+    assert stub.calls == 2
+
+
 def test_router_supports_minimax_and_qwen_provider_configs() -> None:
     router = LLMRouter(
         providers={

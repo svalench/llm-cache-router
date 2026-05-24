@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeAlias
 
 from pydantic import BaseModel, Field
+
+# OpenAI/Anthropic multimodal: content может быть str или list блоков
+Message: TypeAlias = dict[str, Any]
 
 
 class RoutingStrategy(StrEnum):
@@ -68,7 +71,7 @@ class ModelUsageStat(BaseModel):
 
 
 class WarmupEntry(BaseModel):
-    messages: list[dict[str, str]]
+    messages: list[Message]
     model: str
     temperature: float = 0.0
     max_tokens: int | None = None
@@ -97,6 +100,7 @@ class CacheEntry(BaseModel):
     created_at_ts: float
     ttl: int
     hit_count: int = 0
+    model: str | None = None
 
     def is_expired(self, now_ts: float) -> bool:
         return now_ts > (self.created_at_ts + self.ttl)

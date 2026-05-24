@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-24
+
+### Added
+- `Message` type alias for multimodal chat payloads.
+- `CacheEntry.model` and `model` parameter on cache `get`/`set` for strict per-model isolation.
+- Media-aware cache key normalization in `CacheBackend._messages_to_text` (image/audio/video hashes, no full base64 in `query`).
+- Qdrant search filter by `model` when provided.
+
+### Changed
+- Router passes requested `model` into all cache lookups and stores (including stream warmup).
+- Provider APIs use `list[Message]`; Gemini text extraction reads only `text` blocks from list content.
+
+### Fixed
+- Multimodal messages no longer collapse to `str(list)` in cache keys.
+- Same prompt with different models no longer returns a cross-model cache hit.
+
 ## [0.2.3] - 2026-04-22
 
 ### Fixed

@@ -46,3 +46,32 @@ async def test_warmup_skips_cached() -> None:
     result2 = await router.warmup([entry], skip_cached=True)
     assert result2["skipped"] == 1
     assert result2["warmed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_warmup_accepts_multimodal_messages() -> None:
+    router = LLMRouter(
+        providers={"openai": {"api_key": "test", "models": ["gpt-4o-mini"]}},
+        cache=CacheConfig(backend="memory", min_query_length=1, embedding_model="hash"),
+    )
+    stub = WarmupStubProvider()
+    router._providers["openai"] = stub  # noqa: SLF001
+
+    entry = WarmupEntry(
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "warmup multimodal hello world"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/png;base64,QUFB"},
+                    },
+                ],
+            }
+        ],
+        model="gpt-4o-mini",
+    )
+    result = await router.warmup([entry])
+    assert result["warmed"] == 1
+    assert stub.calls == 1
