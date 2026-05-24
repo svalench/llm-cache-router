@@ -21,6 +21,7 @@
 - [Cache Warmup](#cache-warmup)
 - [Routing Strategies](#routing-strategies)
 - [Cache Backends](#cache-backends)
+- [Multimodal Messages & Cache Keys](#multimodal-messages--cache-keys)
 - [Budget and Cost Tracking](#budget-and-cost-tracking)
 - [FastAPI Integration](#fastapi-integration)
 - [Async Context Manager](#async-context-manager)
@@ -46,6 +47,7 @@ One dependency. Six providers. Three cache backends. Full async support.
 ## Features
 
 - **Semantic cache** — vector-similarity matching via `sentence-transformers`, not just exact string hashing.
+- **Multimodal-aware cache keys** — images, audio, and video blocks are hashed into the query; cache is scoped per requested `model`.
 - **Multi-provider routing** across OpenAI, Anthropic, Google Gemini, Ollama, MiniMax and Qwen (Dashscope).
 - **Three routing strategies**: `CHEAPEST_FIRST`, `FASTEST_FIRST`, `FALLBACK_CHAIN`.
 - **Pluggable cache backends**: in-memory (FAISS), Redis, Qdrant.
@@ -54,7 +56,9 @@ One dependency. Six providers. Three cache backends. Full async support.
 - **Cache warmup** with controlled concurrency for pre-production pre-loading.
 - **FastAPI middleware** + Prometheus metrics endpoint out of the box.
 - **Typed** — Pydantic v2 models everywhere, fully typed public API.
-- **Tested** — 10 test modules covering router, cache, providers, retry, warmup, and HTTP middleware.
+- **Tested** — 11 test modules covering router, cache (incl. multimodal keys & model isolation), providers, retry, warmup, and HTTP middleware.
+
+> **Latest:** [v0.2.4 release notes](docs/releases/v0.2.4.md) — multimodal cache keys and per-model cache isolation.
 
 ## Installation
 
@@ -216,6 +220,43 @@ cache=CacheConfig(
 )
 ```
 
+## Multimodal Messages & Cache Keys
+
+Messages follow the OpenAI-compatible shape: `content` can be a **string** or a **list of blocks** (`text`, `image_url`, Anthropic `image`, audio, video). The router passes your requested `model` into the cache layer so different models never share a hit for the same text.
+
+```python
+from llm_cache_router.models import Message, WarmupEntry
+
+messages: list[Message] = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What is in this image?"},
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64,..."},
+            },
+        ],
+    }
+]
+
+response = await router.complete(messages=messages, model="gpt-4o-mini")
+# Second call with the same text + same image → cache_hit=True
+# Same text but a different image → cache miss
+# Same messages but model="gpt-4o" → cache miss (different model scope)
+```
+
+Warmup supports the same multimodal payloads:
+
+```python
+WarmupEntry(
+    messages=messages,
+    model="gpt-4o-mini",
+)
+```
+
+Binary media is stored in the cache key as a short `sha256` fingerprint, not the full base64 payload.
+
 ## Budget and Cost Tracking
 
 Set per-day and per-month USD limits — requests that would exceed the budget are rejected before hitting the provider.
@@ -291,7 +332,7 @@ llm_cache_router/
   cost/           # CostTracker with daily/monthly budgets
   middleware/     # FastAPI middleware
   observability/  # Prometheus metrics
-  models.py       # Pydantic models (LLMResponse, LLMStreamChunk, ...)
+  models.py       # Pydantic models (Message, LLMResponse, CacheEntry, ...)
   router.py       # LLMRouter — public entrypoint
   retry.py        # RetryConfig + exponential backoff
   warmup.py       # async warmup helper
@@ -342,6 +383,8 @@ MIT — see [LICENSE](LICENSE) for details.
 ## 🇷🇺 Краткое описание (Russian)
 
 **llm-cache-router** — лёгкая production-ready Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
+
+**v0.2.4:** корректные ключи кэша для multimodal-сообщений (хэш медиа вместо base64) и изоляция кэша по `model`. [Release notes](docs/releases/v0.2.4.md).
 
 **Установка:**
 
