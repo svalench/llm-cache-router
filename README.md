@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/svalench/llm-cache-router/actions/workflows/ci.yml/badge.svg)](https://github.com/svalench/llm-cache-router/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/svalench/llm-cache-router/blob/main/notebooks/playground.ipynb)
 
 > A lightweight, production-ready Python library that combines **semantic caching**, **multi-provider LLM routing**, and **cost tracking** in a single async-first API. Cut your LLM bill, ship faster, and never hardcode a single provider again.
 
@@ -14,8 +15,11 @@
 ## Table of Contents
 
 - [Why llm-cache-router](#why-llm-cache-router)
+- [Comparison](#comparison)
 - [Features](#features)
 - [Installation](#installation)
+- [Try in one command](#try-in-one-command)
+- [Interactive Playground (Colab)](#interactive-playground-colab)
 - [Quickstart](#quickstart)
 - [Streaming](#streaming)
 - [Cache Warmup](#cache-warmup)
@@ -43,6 +47,21 @@ Calling LLMs directly is expensive, slow, and locks you into a single vendor. Th
 - **Control cost** — built-in daily/monthly budget guardrails with Prometheus metrics for every request.
 
 One dependency. Six providers. Three cache backends. Full async support.
+
+## Comparison
+
+| | llm-cache-router | LiteLLM | Raw provider SDK |
+|---|---|---|---|
+| **Semantic cache** | First-class (memory / Redis / Qdrant) | Optional (`redis-semantic`, `qdrant-semantic`, …) | No |
+| **Multiprovider** | Built-in router + strategies | Yes (100+ providers / proxy) | Single vendor |
+| **Cost tracking** | Built-in budget + savings + metrics | Yes (strong in proxy) | DIY |
+| **Async-first** | Async API by design | Sync + `acompletion` | Vendor-dependent |
+
+**When to choose:**
+
+- **llm-cache-router** — embeddable Python library: semantic cache, routing, and budget guardrails in one async API, no proxy required.
+- **LiteLLM** — gateway/proxy with the widest provider coverage and ops features (rate limits, virtual keys, admin UI).
+- **Raw SDK** — single vendor, full control; you build cache, routing, and cost tracking yourself.
 
 ## Features
 
@@ -77,6 +96,31 @@ pip install "llm-cache-router[dev]"       # tests, ruff, mypy
 ```
 
 Requires **Python 3.11+**.
+
+## Try in one command
+
+Full demo stack: **Redis + Qdrant + FastAPI** with semantic cache.
+
+```bash
+cp .env.example .env   # set OPENAI_API_KEY
+docker compose up --build
+```
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"What is a semantic cache?"}'
+```
+
+Switch cache backend in `.env`: `CACHE_BACKEND=redis` (default) or `CACHE_BACKEND=qdrant`.
+
+Details: [examples/demo/README.md](examples/demo/README.md).
+
+## Interactive Playground (Colab)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/svalench/llm-cache-router/blob/main/notebooks/playground.ipynb)
+
+Notebook: [notebooks/playground.ipynb](notebooks/playground.ipynb) — install, two similar queries to see `cache_hit`, streaming, and `router.stats()` with the in-memory backend (no Redis/Qdrant required in Colab).
 
 ## Quickstart
 
@@ -399,3 +443,5 @@ pip install "llm-cache-router[all]"
 ```
 
 Требуется **Python 3.11+**. Полная документация и примеры — выше (на английском).
+
+**Демо:** `docker compose up --build` (Redis + Qdrant + FastAPI) или [Colab playground](notebooks/playground.ipynb).

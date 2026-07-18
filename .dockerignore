@@ -1,0 +1,14 @@
+.venv/
+dist/
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+__pycache__/
+.cursor/
+tests/
+*.pyc
+*.pyo
+.env
+uv.lock
