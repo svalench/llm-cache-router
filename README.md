@@ -25,6 +25,7 @@
 - [Cache Warmup](#cache-warmup)
 - [Routing Strategies](#routing-strategies)
 - [Cache Backends](#cache-backends)
+- [Cache Invalidation, Versioning & Exact Match](#cache-invalidation-versioning--exact-match)
 - [Multimodal Messages & Cache Keys](#multimodal-messages--cache-keys)
 - [Budget and Cost Tracking](#budget-and-cost-tracking)
 - [FastAPI Integration](#fastapi-integration)
@@ -65,9 +66,9 @@ One dependency. Six providers. Three cache backends. Full async support.
 
 ## Features
 
-- **Semantic cache** — vector-similarity matching via `sentence-transformers`, not just exact string hashing.
+- **Semantic cache** — vector-similarity matching via `sentence-transformers`, not just exact string hashing. Optional `exact_match` mode, key versioning and manual invalidation for correctness-sensitive workloads.
 - **Multimodal-aware cache keys** — images, audio, and video blocks are hashed into the query; cache is scoped per requested `model`.
-- **Multi-provider routing** across OpenAI, Anthropic, Google Gemini, Ollama, MiniMax and Qwen (Dashscope).
+- **Multi-provider routing** across OpenAI, Anthropic, Google Gemini, Ollama, MiniMax, Qwen (Dashscope) and any OpenAI-compatible endpoint (OpenRouter, vLLM, llama.cpp server, LiteLLM proxy, self-hosted inference).
 - **Three routing strategies**: `CHEAPEST_FIRST`, `FASTEST_FIRST`, `FALLBACK_CHAIN`.
 - **Pluggable cache backends**: in-memory (FAISS), Redis, Qdrant.
 - **Streaming** — native async SSE streaming for every provider, transparent to the cache layer.
@@ -75,7 +76,7 @@ One dependency. Six providers. Three cache backends. Full async support.
 - **Cache warmup** with controlled concurrency for pre-production pre-loading.
 - **FastAPI middleware** + Prometheus metrics endpoint out of the box.
 - **Typed** — Pydantic v2 models everywhere, fully typed public API.
-- **Tested** — 11 test modules covering router, cache (incl. multimodal keys & model isolation), providers, retry, warmup, and HTTP middleware.
+- **Tested** — 15 test modules covering router, cache (incl. multimodal keys, model isolation, invalidation, key versioning), strategies, embeddings, providers, retry, warmup, and HTTP middleware.
 
 > **Latest:** [v0.2.4 release notes](docs/releases/v0.2.4.md) — multimodal cache keys and per-model cache isolation.
 
@@ -264,6 +265,43 @@ cache=CacheConfig(
 )
 ```
 
+## Cache Invalidation, Versioning & Exact Match
+
+A semantic cache returns answers for *similar* queries — which also means it can serve stale or simply wrong answers. Three tools keep this under control:
+
+### Choosing a safe threshold
+
+The default `threshold=0.92` is deliberately strict, but cosine similarity cannot fully distinguish «how do I reset my password?» from «how do I reset my **admin** password?». If false positives are expensive in your domain:
+
+- raise the threshold (0.95+), or
+- enable `exact_match=True` — the cache then only returns byte-identical queries (semantic search is disabled), or
+- treat the cache as an advisory layer and validate downstream.
+
+### Manual invalidation
+
+```python
+# Drop cached entries for one model (e.g. after a prompt/model update)
+removed = await router.invalidate_cache(model="gpt-4o-mini")
+
+# Drop everything
+removed = await router.invalidate_cache()
+
+# Full clear (all models, all key versions)
+await router.clear_cache()
+```
+
+### Key versioning
+
+Deployed a new system prompt? Bump `key_version` instead of flushing: old entries become invisible immediately and age out via TTL, while the new version starts with a clean slate.
+
+```python
+from llm_cache_router.models import CacheConfig
+
+cache = CacheConfig(key_version="2026-09-04-prompt-v2")
+```
+
+Works identically across memory, Redis and Qdrant backends.
+
 ## Multimodal Messages & Cache Keys
 
 Messages follow the OpenAI-compatible shape: `content` can be a **string** or a **list of blocks** (`text`, `image_url`, Anthropic `image`, audio, video). The router passes your requested `model` into the cache layer so different models never share a hit for the same text.
@@ -357,11 +395,26 @@ async with LLMRouter(providers={...}) as router:
 | Provider | Streaming | Notes |
 |---|---|---|
 | OpenAI | yes | `gpt-4o`, `gpt-4o-mini`, `o1-*`, etc. |
+| OpenAI-compatible | yes | Any endpoint speaking the OpenAI Chat Completions protocol: OpenRouter, vLLM, llama.cpp server, LiteLLM proxy, self-hosted inference |
 | Anthropic | yes | Claude 3.5 Sonnet/Haiku, Opus |
 | Google Gemini | yes | 1.5 Flash, 1.5 Pro |
 | Ollama | yes | Any locally-served model |
 | MiniMax | yes | `MiniMax-Text-01` and others |
 | Qwen (Dashscope) | yes | `qwen-plus`, `qwen-max`, etc. |
+
+Any OpenAI-compatible endpoint works with a single provider entry — `base_url` is required, `api_key` is optional (local servers often run without one):
+
+```python
+router = LLMRouter(
+    providers={
+        "openai_compatible": {
+            "base_url": "http://localhost:8000/v1",  # vLLM / llama.cpp / LiteLLM proxy
+            "api_key": "optional",                   # omit for keyless local servers
+            "models": ["qwen2.5-32b-instruct"],
+        }
+    }
+)
+```
 
 Adding a new provider = subclass `LLMProvider`, register with `@register_provider("name")`. See `llm_cache_router/providers/base.py`.
 
@@ -405,14 +458,14 @@ Code quality is enforced in CI via:
 
 ## Roadmap
 
-- **v0.3** — Django helpers and middleware.
-- **v0.4** — Streaming retry (reconnect on SSE drop).
-- **v0.5** — Request tracing hooks (OpenTelemetry).
-- **v1.0** — Full OTel spans, pluggable pricing providers, cache invalidation API.
+- **v0.3** — Request tracing hooks (OpenTelemetry spans).
+- **v0.4** — Streaming retry (reconnect on SSE drop); Django helpers and middleware.
+- **v0.5** — Persistent budget counters (Redis/SQLite) surviving process restarts; shared EMA latency metrics for multi-worker deployments.
+- **v1.0** — LLM-verified cache hits (cheap re-check of semantic matches on a mini model); pluggable pricing providers.
 
 ## Contributing
 
-Pull requests are welcome. Please:
+Pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. Quick version:
 
 1. Open an issue first for anything larger than a small bug fix.
 2. Add tests for new behaviour.
@@ -426,7 +479,7 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ## 🇷🇺 Краткое описание (Russian)
 
-**llm-cache-router** — лёгкая production-ready Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
+**llm-cache-router** — лёгкая production-ready Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen и любой OpenAI-compatible endpoint — OpenRouter, vLLM, llama.cpp server, LiteLLM proxy) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), инвалидацию и версионирование ключей кэша, режим точного совпадения, нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
 
 **v0.2.4:** корректные ключи кэша для multimodal-сообщений (хэш медиа вместо base64) и изоляция кэша по `model`. [Release notes](docs/releases/v0.2.4.md).
 

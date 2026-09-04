@@ -32,6 +32,15 @@ class CacheBackend(ABC):
     async def clear(self) -> None:
         raise NotImplementedError
 
+    async def invalidate(self, *, model: str | None = None) -> int:
+        """Инвалидация записей кэша. Возвращает число удалённых записей.
+
+        Если ``model`` передан — удаляются только записи этой модели,
+        иначе — все записи. Бэкенды, не поддерживающие выборочное удаление,
+        могут выбросить NotImplementedError.
+        """
+        raise NotImplementedError("This cache backend does not support invalidate()")
+
     async def close(self) -> None:
         return None
 

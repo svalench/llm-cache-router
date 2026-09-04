@@ -240,6 +240,18 @@ class LLMRouter:
             "cache_backend_stats": cache_stats,
         }
 
+    async def invalidate_cache(self, model: str | None = None) -> int:
+        """Инвалидация кэша. Возвращает число удалённых записей.
+
+        Если ``model`` передан — удаляются только записи этой модели,
+        иначе — все записи кэша.
+        """
+        return await self._cache.invalidate(model=model)
+
+    async def clear_cache(self) -> None:
+        """Полная очистка кэша (все модели и версии ключей)."""
+        await self._cache.clear()
+
     async def close(self) -> None:
         if hasattr(self._cache, "close"):
             await self._cache.close()

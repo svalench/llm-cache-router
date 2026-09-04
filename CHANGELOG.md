@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `openai_compatible` provider: any OpenAI Chat Completions endpoint via `base_url` (OpenRouter, vLLM, llama.cpp server, LiteLLM proxy, self-hosted inference). `api_key` optional for keyless local servers.
+- Cache invalidation API: `LLMRouter.invalidate_cache(model=...)` and `invalidate(model=...)` on all backends (memory / Redis / Qdrant).
+- `CacheConfig.key_version` — cache key versioning: bump the version to make old entries invisible after a prompt deploy, without flushing.
+- `CacheConfig.exact_match` — exact-match-only cache mode (semantic search disabled) for correctness-sensitive workloads.
+- CONTRIBUTING.md, issue templates (bug report / feature request) and a PR template.
+
+### Changed
+- `CHEAPEST_FIRST` now treats models with unknown pricing as infinitely expensive instead of free, so self-hosted models no longer win routing by default.
+- README: new «Cache Invalidation, Versioning & Exact Match» section (incl. threshold false-positive guidance), OpenAI-compatible provider docs, roadmap reordered (OpenTelemetry before Django helpers).
+- Removed committed `llm_cache_router.egg-info/` build artifact and `.cursor/` scratchpad from the repository; `uv.lock` excluded from sdist via MANIFEST.in.
+
+### Fixed
+- OpenAI provider no longer sends `Authorization: Bearer None` when `api_key` is not set.
+
 ## [0.2.4] - 2026-05-24
 
 ### Added

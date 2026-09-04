@@ -82,6 +82,13 @@ class PricingManager:
         pricing = self._data.get(model_key, _DEFAULT_PRICE)
         return {"input": pricing["input"], "output": pricing["output"]}
 
+    def get_or_none(self, model_key: str) -> dict[str, float] | None:
+        """Цены модели или None, если модель неизвестна каталогу."""
+        pricing = self._data.get(model_key)
+        if pricing is None:
+            return None
+        return {"input": pricing["input"], "output": pricing["output"]}
+
     @property
     def all(self) -> dict[str, dict[str, float]]:
         return {

@@ -59,7 +59,11 @@ class InMemorySemanticCache(CacheBackend):
             if not self._entries:
                 return None, None
 
-            score, idx = self._search_top1(embedding, model=model)
+            score, idx = self._search_top1(
+                embedding,
+                model=model,
+                query_text=query_text,
+            )
             if idx < 0:
                 return None, None
             if score < self._config.threshold:
@@ -88,6 +92,7 @@ class InMemorySemanticCache(CacheBackend):
             ttl=self._config.ttl,
             hit_count=0,
             model=model,
+            key_version=self._config.key_version,
         )
 
         async with self._lock:
@@ -105,7 +110,43 @@ class InMemorySemanticCache(CacheBackend):
             self._vectors.clear()
             self._rebuild_index()
 
-    def _search_top1(self, embedding: np.ndarray, *, model: str | None) -> tuple[float, int]:
+    async def invalidate(self, *, model: str | None = None) -> int:
+        async with self._lock:
+            kept: list[tuple[CacheEntry, np.ndarray]] = []
+            removed = 0
+            for entry, vec in zip(self._entries, self._vectors, strict=False):
+                if model is None or entry.model == model:
+                    removed += 1
+                else:
+                    kept.append((entry, vec))
+            if removed:
+                self._entries = [pair[0] for pair in kept]
+                self._vectors = [pair[1] for pair in kept]
+                self._rebuild_index()
+            return removed
+
+    def _entry_visible(
+        self,
+        entry: CacheEntry,
+        *,
+        model: str | None,
+        query_text: str | None = None,
+    ) -> bool:
+        if entry.key_version != self._config.key_version:
+            return False
+        if not self._model_matches(entry.model, model):
+            return False
+        if self._config.exact_match and query_text is not None and entry.query != query_text:
+            return False
+        return True
+
+    def _search_top1(
+        self,
+        embedding: np.ndarray,
+        *,
+        model: str | None,
+        query_text: str | None = None,
+    ) -> tuple[float, int]:
         best_score = -1.0
         best_idx = -1
 
@@ -120,7 +161,7 @@ class InMemorySemanticCache(CacheBackend):
                 if idx < 0 or idx >= len(self._entries):
                     continue
                 entry = self._entries[idx]
-                if not self._model_matches(entry.model, model):
+                if not self._entry_visible(entry, model=model, query_text=query_text):
                     continue
                 score = float(raw_score)
                 if score > best_score:
@@ -132,7 +173,7 @@ class InMemorySemanticCache(CacheBackend):
         scores = matrix @ embedding
         for idx, score in enumerate(scores):
             entry = self._entries[idx]
-            if not self._model_matches(entry.model, model):
+            if not self._entry_visible(entry, model=model, query_text=query_text):
                 continue
             value = float(score)
             if value > best_score:

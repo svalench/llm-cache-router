@@ -4,5 +4,6 @@ from llm_cache_router.providers import (  # noqa: F401
     minimax,
     ollama,
     openai,
+    openai_compatible,
     qwen,
 )

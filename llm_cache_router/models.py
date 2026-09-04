@@ -16,11 +16,31 @@ class RoutingStrategy(StrEnum):
 
 
 class CacheConfig(BaseModel):
+    """
+    Настройки семантическего кэша.
+
+    Поля для контроля корректности попаданий:
+
+    - ``threshold``: косинусная близость, начиная с которой запрос считается
+      «тем же самым». Значение по умолчанию 0.92 достаточно строгое, но не
+      гарантирует отсутствия false positives: близкие по формулировке, но разные
+      по смыслу запросы могут склеиться (например, «как сбросить пароль?» и
+      «как сбросить пароль администратора?»). Для чувствительных сценариев
+      используйте ``exact_match=True`` или поднимите порог.
+    - ``exact_match``: если True, кэш отдаёт ответ только при точном совпадении
+      текста запроса (семантический поиск отключается).
+    - ``key_version``: версия ключей кэша. Измените значение (например, при
+      деплое нового системного промпта), чтобы старые записи перестали
+      находиться — они игнорируются и со временем вытесняются по TTL.
+    """
+
     backend: str = "memory"
     threshold: float = 0.92
     ttl: int = 3600
     max_entries: int = 10_000
     min_query_length: int = 10
+    exact_match: bool = False
+    key_version: str = "v1"
     embedding_model: str = "all-MiniLM-L6-v2"
     redis_url: str = "redis://localhost:6379/0"
     redis_namespace: str = "llm_cache_router"
@@ -101,6 +121,7 @@ class CacheEntry(BaseModel):
     ttl: int
     hit_count: int = 0
     model: str | None = None
+    key_version: str = "v1"
 
     def is_expired(self, now_ts: float) -> bool:
         return now_ts > (self.created_at_ts + self.ttl)

@@ -11,11 +11,29 @@ from llm_cache_router.retry import with_retry
 
 
 class OpenAIProvider(LLMProvider):
+    """OpenAI Chat Completions API (или любой другой сервис с тем же протоколом).
+
+    Для self-hosted и агрегирующих endpoint'ов (OpenRouter, vLLM, llama.cpp server,
+    LiteLLM proxy, ...) используйте OpenAICompatibleProvider с явным base_url.
+    """
+
+    _require_api_key = True
+
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
-        self._base_url = config.base_url or "https://api.openai.com/v1"
-        if not config.api_key:
-            raise ValueError("OpenAI api_key is required")
+        self._base_url = (config.base_url or "https://api.openai.com/v1").rstrip("/")
+        if self._require_api_key and not config.api_key:
+            raise ValueError(f"{self.config.name} api_key is required")
+
+    @property
+    def _provider_label(self) -> str:
+        return self.config.name
+
+    @property
+    def _auth_headers(self) -> dict[str, str]:
+        if self.config.api_key:
+            return {"Authorization": f"Bearer {self.config.api_key}"}
+        return {}
 
     async def complete(
         self,
@@ -36,7 +54,7 @@ class OpenAIProvider(LLMProvider):
 
             response = await self._client.post(
                 f"{self._base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.config.api_key}"},
+                headers=self._auth_headers,
                 json=payload,
             )
             if response.status_code >= 400:
@@ -47,7 +65,7 @@ class OpenAIProvider(LLMProvider):
             latency_ms = int((time.perf_counter() - started) * 1000)
             return LLMResponse(
                 content=choice,
-                provider_used="openai",
+                provider_used=self._provider_label,
                 model_used=model,
                 input_tokens=usage.get("prompt_tokens", 0),
                 output_tokens=usage.get("completion_tokens", 0),
@@ -82,13 +100,13 @@ class OpenAIProvider(LLMProvider):
         async with self._client.stream(
             "POST",
             f"{self._base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            headers=self._auth_headers,
             json=payload,
         ) as response:
             if response.status_code >= 400:
                 body = await response.aread()
                 raise ProviderError(
-                    f"OpenAI error: {response.status_code} {body.decode(errors='ignore')}"
+                    f"{self._provider_label} error: {response.status_code} {body.decode(errors='ignore')}"
                 )
             async for line in response.aiter_lines():
                 if not line or not line.startswith("data: "):
@@ -109,7 +127,7 @@ class OpenAIProvider(LLMProvider):
                 is_final = choice.get("finish_reason") is not None
                 chunk = LLMStreamChunk(
                     delta=delta,
-                    provider_used="openai",
+                    provider_used=self._provider_label,
                     model_used=model,
                     is_final=is_final,
                     input_tokens=input_tokens if is_final else None,
@@ -121,7 +139,7 @@ class OpenAIProvider(LLMProvider):
         if not final_emitted:
             yield LLMStreamChunk(
                 delta="",
-                provider_used="openai",
+                provider_used=self._provider_label,
                 model_used=model,
                 is_final=True,
                 input_tokens=input_tokens,

@@ -26,6 +26,7 @@ if _qdrant_client is None or _qdrant_models is None:  # pragma: no cover
     Direction: Any = None
     FieldCondition: Any = None
     Filter: Any = None
+    FilterSelector: Any = None
     MatchValue: Any = None
     OrderBy: Any = None
     PointIdsList: Any = None
@@ -37,6 +38,7 @@ else:
     Direction = _qdrant_models.Direction
     FieldCondition = _qdrant_models.FieldCondition
     Filter = _qdrant_models.Filter
+    FilterSelector = _qdrant_models.FilterSelector
     MatchValue = _qdrant_models.MatchValue
     OrderBy = _qdrant_models.OrderBy
     PointIdsList = _qdrant_models.PointIdsList
@@ -95,7 +97,7 @@ class QdrantSemanticCache(CacheBackend):
             "with_payload": True,
             "score_threshold": self._config.threshold,
         }
-        query_filter = self._build_model_filter(model)
+        query_filter = self._build_query_filter(model, query_text)
         if query_filter is not None:
             search_kwargs["query_filter"] = query_filter
         results = await qdrant_client.search(**search_kwargs)
@@ -151,6 +153,7 @@ class QdrantSemanticCache(CacheBackend):
             "ttl": entry.ttl,
             "hit_count": entry.hit_count,
             "model": entry.model,
+            "key_version": entry.key_version,
         }
 
         await self._client.upsert(
@@ -180,6 +183,31 @@ class QdrantSemanticCache(CacheBackend):
             ),
         )
         self._total_vectors = 0
+
+    async def invalidate(self, *, model: str | None = None) -> int:
+        if model is None:
+            count = await self._count_vectors()
+            await self.clear()
+            return count
+        await self._ensure_collection()
+        if Filter is None or FieldCondition is None or MatchValue is None or FilterSelector is None:
+            raise NotImplementedError("qdrant-client is required for selective invalidation")
+        total_before = await self._count_vectors()
+        await self._client.delete(
+            collection_name=self._collection_name,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="model",
+                            match=MatchValue(value=model),
+                        )
+                    ]
+                )
+            ),
+        )
+        self._total_vectors = await self._count_vectors()
+        return total_before - self._total_vectors
 
     async def close(self) -> None:
         await self._client.close()
@@ -241,19 +269,32 @@ class QdrantSemanticCache(CacheBackend):
                 ttl=int(payload["ttl"]),
                 hit_count=int(payload.get("hit_count", 0)),
                 model=payload.get("model"),
+                key_version=str(payload.get("key_version", "v1")),
             )
         except (KeyError, TypeError, ValueError):
             return None
 
-    @staticmethod
-    def _build_model_filter(model: str | None) -> Any | None:
-        if model is None or Filter is None or FieldCondition is None or MatchValue is None:
+    def _build_query_filter(self, model: str | None, query_text: str | None) -> Any | None:
+        if Filter is None or FieldCondition is None or MatchValue is None:
             return None
-        return Filter(
-            must=[
+        must: list[Any] = [
+            FieldCondition(
+                key="key_version",
+                match=MatchValue(value=self._config.key_version),
+            )
+        ]
+        if model is not None:
+            must.append(
                 FieldCondition(
                     key="model",
                     match=MatchValue(value=model),
                 )
-            ]
-        )
+            )
+        if self._config.exact_match and query_text is not None:
+            must.append(
+                FieldCondition(
+                    key="query",
+                    match=MatchValue(value=query_text),
+                )
+            )
+        return Filter(must=must)
