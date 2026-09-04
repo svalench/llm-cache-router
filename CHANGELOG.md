@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-04
+
 ### Added
 - `openai_compatible` provider: any OpenAI Chat Completions endpoint via `base_url` (OpenRouter, vLLM, llama.cpp server, LiteLLM proxy, self-hosted inference). `api_key` optional for keyless local servers.
 - Cache invalidation API: `LLMRouter.invalidate_cache(model=...)` and `invalidate(model=...)` on all backends (memory / Redis / Qdrant).

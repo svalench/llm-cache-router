@@ -78,7 +78,7 @@ One dependency. Six providers. Three cache backends. Full async support.
 - **Typed** — Pydantic v2 models everywhere, fully typed public API.
 - **Tested** — 15 test modules covering router, cache (incl. multimodal keys, model isolation, invalidation, key versioning), strategies, embeddings, providers, retry, warmup, and HTTP middleware.
 
-> **Latest:** [v0.2.4 release notes](docs/releases/v0.2.4.md) — multimodal cache keys and per-model cache isolation.
+> **Latest:** [v0.3.0 release notes](docs/releases/v0.3.0.md) — openai_compatible provider, cache invalidation, key versioning and exact-match mode.
 
 ## Installation
 
@@ -481,7 +481,7 @@ MIT — see [LICENSE](LICENSE) for details.
 
 **llm-cache-router** — лёгкая production-ready Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen и любой OpenAI-compatible endpoint — OpenRouter, vLLM, llama.cpp server, LiteLLM proxy) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), инвалидацию и версионирование ключей кэша, режим точного совпадения, нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
 
-**v0.2.4:** корректные ключи кэша для multimodal-сообщений (хэш медиа вместо base64) и изоляция кэша по `model`. [Release notes](docs/releases/v0.2.4.md).
+**v0.3.0:** провайдер `openai_compatible` (OpenRouter, vLLM, llama.cpp, LiteLLM proxy), инвалидация и версионирование ключей кэша, режим точного совпадения. [Release notes](docs/releases/v0.3.0.md).
 
 **Установка:**
 
