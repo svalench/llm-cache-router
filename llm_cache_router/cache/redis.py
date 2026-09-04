@@ -88,7 +88,11 @@ class RedisSemanticCache(CacheBackend):
                 continue
             payload = json.loads(raw)
             entry = self._entry_from_payload(payload)
+            if entry.key_version != self._config.key_version:
+                continue
             if not self._model_matches(entry.model, model):
+                continue
+            if self._config.exact_match and entry.query != query_text:
                 continue
             if entry.is_expired(now_ts):
                 stale_ids.append(entry_id)
@@ -132,9 +136,32 @@ class RedisSemanticCache(CacheBackend):
             ttl=self._config.ttl,
             hit_count=0,
             model=model,
+            key_version=self._config.key_version,
         )
         await self._persist_entry(entry, refresh_score=True)
         await self._trim_max_entries()
+
+    async def invalidate(self, *, model: str | None = None) -> int:
+        ids = await self._redis_call("zrange", self._index_key, 0, -1)
+        if not ids:
+            return 0
+        raw_payloads = await self._redis_call(
+            "mget", *[self._entry_key(entry_id) for entry_id in ids]
+        )
+        ids_to_remove: list[str] = []
+        for entry_id, raw in zip(ids, raw_payloads, strict=False):
+            if raw is None:
+                ids_to_remove.append(entry_id)
+                continue
+            payload = json.loads(raw)
+            entry_model = payload.get("model")
+            if model is None or entry_model == model:
+                ids_to_remove.append(entry_id)
+        if not ids_to_remove:
+            return 0
+        await self._redis_call("delete", *[self._entry_key(entry_id) for entry_id in ids_to_remove])
+        await self._redis_call("zrem", self._index_key, *ids_to_remove)
+        return len(ids_to_remove)
 
     async def clear(self) -> None:
         ids = await self._redis_call("zrange", self._index_key, 0, -1)
@@ -168,6 +195,7 @@ class RedisSemanticCache(CacheBackend):
             "ttl": entry.ttl,
             "hit_count": entry.hit_count,
             "model": entry.model,
+            "key_version": entry.key_version,
             "response": entry.response.model_dump(),
         }
         await self._redis_call("set", key, json.dumps(payload), ex=entry.ttl)
@@ -199,6 +227,7 @@ class RedisSemanticCache(CacheBackend):
             ttl=int(payload["ttl"]),
             hit_count=int(payload.get("hit_count", 0)),
             model=payload.get("model"),
+            key_version=str(payload.get("key_version", "v1")),
         )
 
     @staticmethod

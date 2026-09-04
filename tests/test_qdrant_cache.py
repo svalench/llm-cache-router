@@ -36,7 +36,9 @@ class FakeAsyncQdrantClient:
     async def collection_exists(self, collection_name: str) -> bool:
         return collection_name in self.collections
 
-    async def create_collection(self, collection_name: str, vectors_config: FakeVectorParams) -> None:
+    async def create_collection(
+        self, collection_name: str, vectors_config: FakeVectorParams
+    ) -> None:
         del vectors_config
         self.collections.setdefault(collection_name, [])
 
@@ -53,7 +55,7 @@ class FakeAsyncQdrantClient:
         points = self.collections.get(collection_name, [])
         ranked: list[tuple[float, dict]] = []
         for point in points:
-            if query_filter is not None:
+            if query_filter is not None and isinstance(query_filter, dict):
                 expected_model = query_filter.get("model")
                 if expected_model is not None and point["payload"].get("model") != expected_model:
                     continue
@@ -146,17 +148,18 @@ async def test_qdrant_cache_model_isolation(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(qdrant_module, "FieldCondition", dict)
     monkeypatch.setattr(qdrant_module, "MatchValue", dict)
 
-    original_build_filter = qdrant_module.QdrantSemanticCache._build_model_filter
+    original_build_filter = qdrant_module.QdrantSemanticCache._build_query_filter
 
-    def _fake_build_model_filter(model: str | None):
+    def _fake_build_query_filter(self, model: str | None, query_text: str | None):
+        del query_text
         if model is None:
             return None
         return {"model": model}
 
     monkeypatch.setattr(
         qdrant_module.QdrantSemanticCache,
-        "_build_model_filter",
-        staticmethod(_fake_build_model_filter),
+        "_build_query_filter",
+        _fake_build_query_filter,
     )
 
     cache = qdrant_module.QdrantSemanticCache(
@@ -182,6 +185,6 @@ async def test_qdrant_cache_model_isolation(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(
         qdrant_module.QdrantSemanticCache,
-        "_build_model_filter",
+        "_build_query_filter",
         original_build_filter,
     )

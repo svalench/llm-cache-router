@@ -2,11 +2,15 @@ include README.md
 include LICENSE
 include CHANGELOG.md
 include pyproject.toml
+include CONTRIBUTING.md
+include llm_cache_router/pricing/pricing.json
+exclude uv.lock
 recursive-include llm_cache_router py.typed
 recursive-include llm_cache_router *.py
-include llm_cache_router/pricing/pricing.json
 recursive-exclude tests *
 recursive-exclude examples *
+recursive-exclude notebooks *
+recursive-exclude docs *
 global-exclude __pycache__
 global-exclude *.py[cod]
 global-exclude *.egg-info
