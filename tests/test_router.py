@@ -171,6 +171,7 @@ async def test_async_context_manager() -> None:
     close_calls = 0
     async with LLMRouter(
         providers={"openai": {"api_key": "test", "models": ["gpt-4o"]}},
+        cache=CacheConfig(embedding_model="hash"),
     ) as router:
         assert router is not None
         original_close = router.close
@@ -226,4 +227,3 @@ async def test_router_stream_fallback_chain() -> None:
     assert chunks[-1].is_final is True
     assert chunks[-1].provider_used == "anthropic"
     assert chunks[-1].model_used == "claude-3-5-sonnet"
-

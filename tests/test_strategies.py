@@ -8,7 +8,7 @@ from llm_cache_router.strategies.fastest import FastestFirstStrategy
 
 
 def _known_pricing(monkeypatch: pytest.MonkeyPatch, pricing: dict[str, dict[str, float]]) -> None:
-    from llm_cache_router.pricing import manager as pricing_manager_module
+    from llm_cache_router.strategies import cheapest as cheapest_module
 
     class StubPricingManager:
         async def ensure_fresh(self) -> None:
@@ -23,7 +23,7 @@ def _known_pricing(monkeypatch: pytest.MonkeyPatch, pricing: dict[str, dict[str,
                 return {"input": 0.0, "output": 0.0}
             return value
 
-    monkeypatch.setattr(pricing_manager_module, "get_pricing_manager", lambda: StubPricingManager())
+    monkeypatch.setattr(cheapest_module, "get_pricing_manager", lambda: StubPricingManager())
 
 
 @pytest.mark.asyncio
