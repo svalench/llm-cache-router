@@ -71,7 +71,7 @@ One async API. Six named providers plus OpenAI-compatible endpoints. Three cache
 - **Typed** — Pydantic v2 models everywhere, fully typed public API.
 - **Tested** — unit tests covering router, cache (incl. multimodal keys, model isolation, invalidation, key versioning), strategies, embeddings, providers, retry, warmup, HTTP middleware, and the offline demo.
 
-> **Latest:** [v0.3.0 release notes](docs/releases/v0.3.0.md) — openai_compatible provider, cache invalidation, key versioning and exact-match mode.
+> **Latest:** [v0.3.1 release notes](docs/releases/v0.3.1.md): offline demo, corrected onboarding, and distribution validation.
 
 ## Installation
 

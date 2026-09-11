@@ -1,6 +1,6 @@
 [project]
 name = "llm-cache-router"
-version = "0.3.0"
+version = "0.3.1"
 description = "Semantic cache, multi-provider LLM router and cost tracker (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen)"
 readme = "README.md"
 requires-python = ">=3.11"

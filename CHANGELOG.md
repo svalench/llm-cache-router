@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-11
+
+Maintenance release adding an offline onboarding path and stronger distribution validation.
+
+- Add a packaged offline demo using a stub provider and the real in-memory cache, without API keys or paid model calls.
+- Restore the missing environment-variable template and improve CLI help.
+- Correct documentation about dependencies, provider registration, budgets, and demo limitations.
+- Add network-isolated regression tests and an installed-wheel smoke check.
+
+Details: [v0.3.1 release notes](docs/releases/v0.3.1.md).
+
 ## [0.3.0] - 2026-09-04
 
 ### Added
