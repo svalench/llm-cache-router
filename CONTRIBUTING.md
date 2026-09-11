@@ -24,6 +24,33 @@ pip install -e ".[all,dev]"
 pytest
 ```
 
+### Lightweight offline unit tests
+
+The normal install includes sentence-transformers/PyTorch. To work on routing,
+hash-based caching, or packaging without downloading that ML stack, use a fresh
+environment and explicitly install only the dependencies needed by the mocked
+unit suite:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install "pydantic>=2.0" "httpx>=0.27" "numpy>=1.26" \
+  "fastapi>=0.111" "pytest>=8.0" "pytest-asyncio>=0.23"
+python -m pip install --no-deps -e .
+python -m pytest
+llm-cache-router demo
+```
+
+This deliberately omits declared ML dependencies: it is a **test-only setup**,
+not a supported replacement for the normal installation or a semantic-embedding
+test. `pip check` will report the omitted dependencies. Redis/Qdrant tests use
+fake clients; the memory cache uses its NumPy fallback when FAISS is absent.
+Optionally install `faiss-cpu` to exercise its index path without PyTorch.
+
+Tests block outbound connections and use bundled pricing, hash embeddings, and
+fake providers. Never add tests that require real API keys, model downloads, or
+paid calls. Dedicated pricing tests mock their own HTTP calls.
+
 ## Making changes
 
 1. Fork / branch from `main`.
@@ -42,6 +69,20 @@ ruff format llm_cache_router/ tests/
 mypy llm_cache_router/ --ignore-missing-imports
 pytest
 ```
+
+CI also builds an sdist and a wheel from it, checks their metadata/README, and
+smoke-tests the installed wheel in isolation from the source checkout:
+
+```bash
+python -m pip install build twine
+python -m build
+python -m twine check --strict dist/*
+```
+
+The distribution smoke job intentionally installs only Pydantic, HTTPX, and NumPy
+alongside the wheel with `--no-deps`; it checks the hash/NumPy fallback, CLI, and
+bundled resources, not the complete dependency stack. The regular test job
+retains the full dependency install.
 
 ## Adding a provider
 

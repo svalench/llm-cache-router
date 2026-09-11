@@ -104,8 +104,9 @@ async def test_memory_semantic_mode_matches_similar_query() -> None:
     )
     await cache.set(_messages("как сбросить пароль пользователя"), _response())
 
-    # Тот же набор токенов в другом порядке — хэш-энкодер даёт высокую близость
-    similar, _ = await cache.get(_messages("пароль пользователя как сбросить"))
+    # Keep the first word: extracted cache text prefixes it with "user:".
+    # Reorder the remaining words to preserve the actual hashed token set.
+    similar, _ = await cache.get(_messages("как пароль пользователя сбросить"))
 
     assert similar is not None
 

@@ -8,19 +8,20 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/svalench/llm-cache-router/blob/main/notebooks/playground.ipynb)
 
-> A lightweight, production-ready Python library that combines **semantic caching**, **multi-provider LLM routing**, and **cost tracking** in a single async-first API. Cut your LLM bill, ship faster, and never hardcode a single provider again.
+> A Python library that combines **semantic caching**, **multi-provider LLM routing**, and **cost tracking** in a single async-first API. Start with the offline demo below to try the cache without an API key.
 
 ---
 
 ## Table of Contents
 
 - [Why llm-cache-router](#why-llm-cache-router)
-- [Comparison](#comparison)
+- [Scope and limitations](#scope-and-limitations)
 - [Features](#features)
 - [Installation](#installation)
-- [Try in one command](#try-in-one-command)
+- [Quickstart (offline, no API key)](#quickstart-offline-no-api-key)
+- [Docker demo (OpenAI API key required)](#docker-demo-openai-api-key-required)
 - [Interactive Playground (Colab)](#interactive-playground-colab)
-- [Quickstart](#quickstart)
+- [Connect a real provider](#connect-a-real-provider)
 - [Streaming](#streaming)
 - [Cache Warmup](#cache-warmup)
 - [Routing Strategies](#routing-strategies)
@@ -41,28 +42,20 @@
 
 ## Why llm-cache-router
 
-Calling LLMs directly is expensive, slow, and locks you into a single vendor. This library solves all three problems at once:
+Add caching, routing, and usage accounting without running a separate proxy:
 
-- **Save money** — a semantic cache returns answers for near-duplicate queries without re-calling the provider, typically cutting spend by 30–70% on production workloads.
-- **Stay resilient** — swap providers on the fly, use fallback chains, and never take a full outage because one vendor is down.
-- **Control cost** — built-in daily/monthly budget guardrails with Prometheus metrics for every request.
+- **Reuse responses** — a cache hit avoids another provider call. Savings depend on query repetition, cache settings, model pricing, and acceptable answer reuse; this project does not provide a measured production savings benchmark.
+- **Handle provider failures** — configure fallback chains across providers and models.
+- **Track cost** — per-model estimates, daily/monthly budget accounting, and Prometheus metrics.
 
-One dependency. Six providers. Three cache backends. Full async support.
+One async API. Six named providers plus OpenAI-compatible endpoints. Three cache backends.
 
-## Comparison
+## Scope and limitations
 
-| | llm-cache-router | LiteLLM | Raw provider SDK |
-|---|---|---|---|
-| **Semantic cache** | First-class (memory / Redis / Qdrant) | Optional (`redis-semantic`, `qdrant-semantic`, …) | No |
-| **Multiprovider** | Built-in router + strategies | Yes (100+ providers / proxy) | Single vendor |
-| **Cost tracking** | Built-in budget + savings + metrics | Yes (strong in proxy) | DIY |
-| **Async-first** | Async API by design | Sync + `acompletion` | Vendor-dependent |
-
-**When to choose:**
-
-- **llm-cache-router** — embeddable Python library: semantic cache, routing, and budget guardrails in one async API, no proxy required.
-- **LiteLLM** — gateway/proxy with the widest provider coverage and ops features (rate limits, virtual keys, admin UI).
-- **Raw SDK** — single vendor, full control; you build cache, routing, and cost tracking yourself.
+- The package is **beta**. Validate cache correctness, latency, and savings on your own workload before production use.
+- Semantic similarity is not a correctness guarantee. The offline demo uses exact matching and a hash encoder; it does not demonstrate semantic understanding or benchmark savings.
+- Budget counters are process-local and checked **after** provider usage is recorded, not before a billable request. They are not a hard provider-side spending cap.
+- The default embedding model may download weights on first use. If loading fails, the current cache backends fall back to hashing; hash similarity is not a substitute for semantic embeddings.
 
 ## Features
 
@@ -76,7 +69,7 @@ One dependency. Six providers. Three cache backends. Full async support.
 - **Cache warmup** with controlled concurrency for pre-production pre-loading.
 - **FastAPI middleware** + Prometheus metrics endpoint out of the box.
 - **Typed** — Pydantic v2 models everywhere, fully typed public API.
-- **Tested** — 15 test modules covering router, cache (incl. multimodal keys, model isolation, invalidation, key versioning), strategies, embeddings, providers, retry, warmup, and HTTP middleware.
+- **Tested** — unit tests covering router, cache (incl. multimodal keys, model isolation, invalidation, key versioning), strategies, embeddings, providers, retry, warmup, HTTP middleware, and the offline demo.
 
 > **Latest:** [v0.3.0 release notes](docs/releases/v0.3.0.md) — openai_compatible provider, cache invalidation, key versioning and exact-match mode.
 
@@ -98,12 +91,50 @@ pip install "llm-cache-router[dev]"       # tests, ruff, mypy
 
 Requires **Python 3.11+**.
 
-## Try in one command
+The core install includes **Pydantic, HTTPX, NumPy, FAISS CPU, and sentence-transformers** (which also brings in PyTorch and other dependencies). It is not a single-dependency or small-download install. Package installation needs network access unless those packages are already available locally.
 
-Full demo stack: **Redis + Qdrant + FastAPI** with semantic cache.
+## Quickstart (offline, no API key)
+
+Use a checkout to run the demo from this branch, including changes not yet released to PyPI:
 
 ```bash
-cp .env.example .env   # set OPENAI_API_KEY
+git clone https://github.com/svalench/llm-cache-router.git
+cd llm-cache-router
+python3 -m venv .venv
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install .
+llm-cache-router demo
+```
+
+After installation, the demo runs **without network requests, API keys, model downloads, Docker, Redis, or Qdrant**. It uses a fixed stub response, an in-memory cache, `embedding_model="hash"`, and `exact_match=True`. `FASTEST_FIRST` avoids the remote pricing refresh used by `CHEAPEST_FIRST`.
+
+Expected output:
+
+```json
+{
+  "mode": "offline stub / exact-match cache",
+  "response": "This is a fixed demo response, not an LLM-generated answer.",
+  "first_cache_hit": false,
+  "second_cache_hit": true,
+  "provider_calls": 1,
+  "total_requests": 2,
+  "cache_hits": 1,
+  "total_cost_usd": 0.0
+}
+```
+
+The second **identical** request reuses the first response. Each run starts with an empty cache. The zero cost is a property of this stub, not a savings estimate for real models. The demo is included in the installed package; `python -m llm_cache_router.demo` is an equivalent invocation. See [the demo implementation](llm_cache_router/demo.py) for a small custom-provider example.
+
+## Docker demo (OpenAI API key required)
+
+Full demo stack: **Redis + Qdrant + FastAPI** with semantic cache.
+This separate example makes billable OpenAI calls on cache misses and may download embedding-model weights. It requires Docker Compose.
+
+```bash
+git clone https://github.com/svalench/llm-cache-router.git
+cd llm-cache-router
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY before starting.
 docker compose up --build
 ```
 
@@ -121,39 +152,36 @@ Details: [examples/demo/README.md](examples/demo/README.md).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/svalench/llm-cache-router/blob/main/notebooks/playground.ipynb)
 
-Notebook: [notebooks/playground.ipynb](notebooks/playground.ipynb) — install, two similar queries to see `cache_hit`, streaming, and `router.stats()` with the in-memory backend (no Redis/Qdrant required in Colab).
+Notebook: [notebooks/playground.ipynb](notebooks/playground.ipynb) — installation, caching, streaming, and `router.stats()` with the in-memory backend (no Redis/Qdrant required in Colab). It requires an OpenAI API key, can incur API charges, and may download embedding weights. Similar queries are not guaranteed cache hits.
 
-## Quickstart
+## Connect a real provider
+
+This example requires `OPENAI_API_KEY` in your environment and makes a billable request on a cache miss. Unlike the offline demo, it uses the default sentence-transformer encoder and may download weights.
 
 ```python
 import asyncio
-from llm_cache_router import CacheConfig, LLMRouter, RoutingStrategy
+import os
+
+from llm_cache_router import CacheConfig, LLMRouter
 
 
 async def main() -> None:
-    router = LLMRouter(
+    async with LLMRouter(
         providers={
-            "openai":    {"api_key": "sk-...",           "models": ["gpt-4o-mini"]},
-            "anthropic": {"api_key": "sk-ant-...",       "models": ["claude-3-5-sonnet"]},
-            "gemini":    {"api_key": "AIza...",          "models": ["gemini-1.5-flash"]},
-            "ollama":    {"base_url": "http://localhost:11434", "models": ["llama3.2"]},
+            "openai": {
+                "api_key": os.environ["OPENAI_API_KEY"],
+                "models": ["gpt-4o-mini"],
+            },
         },
-        cache=CacheConfig(
-            backend="memory",
-            threshold=0.92,       # cosine similarity threshold
-            ttl=3600,             # cache TTL in seconds
-            max_entries=10_000,
-        ),
-        strategy=RoutingStrategy.CHEAPEST_FIRST,
-        budget={"daily_usd": 5.0, "monthly_usd": 50.0},
-    )
-
-    response = await router.complete(
-        messages=[{"role": "user", "content": "What is a semantic cache?"}],
-        model="gpt-4o-mini",
-    )
-    print(response.content)
-    print(f"cache_hit={response.cache_hit} cost=${response.cost_usd:.6f}")
+        cache=CacheConfig(backend="memory", threshold=0.92, ttl=3600),
+    ) as router:
+        response = await router.complete(
+            messages=[{"role": "user", "content": "What is a semantic cache?"}],
+            model="gpt-4o-mini",
+        )
+        print(response.content)
+        print(f"cache_hit={response.cache_hit}")
+        print(f"total_cost_usd={router.stats().total_cost_usd:.6f}")
 
 
 asyncio.run(main())
@@ -274,7 +302,7 @@ A semantic cache returns answers for *similar* queries — which also means it c
 The default `threshold=0.92` is deliberately strict, but cosine similarity cannot fully distinguish «how do I reset my password?» from «how do I reset my **admin** password?». If false positives are expensive in your domain:
 
 - raise the threshold (0.95+), or
-- enable `exact_match=True` — the cache then only returns byte-identical queries (semantic search is disabled), or
+- enable `exact_match=True` — the cache then requires identical extracted query text within the requested model/key-version scope (not byte-identical raw message objects), or
 - treat the cache as an advisory layer and validate downstream.
 
 ### Manual invalidation
@@ -341,7 +369,9 @@ Binary media is stored in the cache key as a short `sha256` fingerprint, not the
 
 ## Budget and Cost Tracking
 
-Set per-day and per-month USD limits — requests that would exceed the budget are rejected before hitting the provider.
+Set per-day and per-month USD limits. A `BudgetExceededError` is raised when recorded usage crosses a limit, **after the provider call has already happened**. Counters reset when the process restarts and are not shared across workers. Use provider-side limits for a hard spending cap.
+
+Costs and savings are estimates based on reported token usage and the pricing catalog, not reconciled invoices. Unknown model prices currently contribute zero to cost accounting.
 
 ```python
 router = LLMRouter(
@@ -416,7 +446,7 @@ router = LLMRouter(
 )
 ```
 
-Adding a new provider = subclass `LLMProvider`, register with `@register_provider("name")`. See `llm_cache_router/providers/base.py`.
+Adding a new provider = subclass `LLMProvider`, then call `register_provider("name", YourProvider)`. See `llm_cache_router/providers/base.py` and the [offline demo](llm_cache_router/demo.py).
 
 ## Architecture
 
@@ -455,6 +485,9 @@ Code quality is enforced in CI via:
 - `ruff check` (lint) and `ruff format --check` (style)
 - `mypy --ignore-missing-imports` (type check)
 - `pytest` on Python 3.11, 3.12, 3.13 with coverage
+- sdist/wheel builds, `twine check --strict`, and an installed-wheel offline smoke check
+
+Tests use fake providers/clients and block outbound connections. They do not validate live provider APIs, semantic-model quality, or real Redis/Qdrant services. For a smaller test setup without PyTorch/model dependencies, see [CONTRIBUTING.md](CONTRIBUTING.md#lightweight-offline-unit-tests).
 
 ## Roadmap
 
@@ -479,7 +512,7 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ## 🇷🇺 Краткое описание (Russian)
 
-**llm-cache-router** — лёгкая production-ready Python-библиотека для семантического кэширования LLM-запросов, мульти-провайдер роутинга и контроля бюджета. Экономит 30–70% на LLM-счетах за счёт векторного кэша, переключается между провайдерами (OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen и любой OpenAI-compatible endpoint — OpenRouter, vLLM, llama.cpp server, LiteLLM proxy) без изменений в коде приложения, и включает встроенный трекинг стоимости с дневными/месячными лимитами. Поддерживает три бэкенда кэша (in-memory / Redis / Qdrant), инвалидацию и версионирование ключей кэша, режим точного совпадения, нативный стриминг для всех провайдеров и FastAPI-middleware с Prometheus-метриками.
+**llm-cache-router** — Python-библиотека в статусе beta для семантического кэширования LLM-запросов, мульти-провайдер роутинга и учёта стоимости. Кэш позволяет повторно использовать ответы без вызова провайдера; экономия зависит от нагрузки и настроек, подтверждённого production-бенчмарка здесь нет. Поддерживаются OpenAI, Anthropic, Gemini, Ollama, MiniMax, Qwen и OpenAI-compatible endpoints, три бэкенда кэша (in-memory / Redis / Qdrant), инвалидация и версионирование ключей, точное совпадение, стриминг и FastAPI-middleware с Prometheus-метриками. Дневные/месячные лимиты проверяются после вызова провайдера; счётчики локальны для процесса и не являются жёстким ограничением расходов.
 
 **v0.3.0:** провайдер `openai_compatible` (OpenRouter, vLLM, llama.cpp, LiteLLM proxy), инвалидация и версионирование ключей кэша, режим точного совпадения. [Release notes](docs/releases/v0.3.0.md).
 
@@ -497,4 +530,4 @@ pip install "llm-cache-router[all]"
 
 Требуется **Python 3.11+**. Полная документация и примеры — выше (на английском).
 
-**Демо:** `docker compose up --build` (Redis + Qdrant + FastAPI) или [Colab playground](notebooks/playground.ipynb).
+**Демо без API-ключа:** [offline quickstart](#quickstart-offline-no-api-key) — после установки `llm-cache-router demo` использует фиксированный ответ, hash encoder и точное совпадение без сетевых запросов и загрузки моделей. Установка пакета включает ML-зависимости. Docker-демо и [Colab playground](notebooks/playground.ipynb) требуют OpenAI API key и могут приводить к платным вызовам.
