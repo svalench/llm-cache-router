@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.2] - 2026-10-18
 
 ### Fixed
+- Raise vulnerable direct dependency/build-tool minimums and refresh the development lockfile after dependency advisory checks.
 - Hash embeddings are stable across Python workers and restarts, allowing persistent caches to reuse vectors reliably.
 - Redis entries for the same prompt no longer overwrite other models or key versions.
 - Qdrant supports current clients using `query_points`, stores the configured key version, and allows invalidation before the first request.
