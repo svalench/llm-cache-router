@@ -207,7 +207,8 @@ class RedisSemanticCache(CacheBackend):
                 await self._redis_call("zadd", self._index_key, {entry_id: entry.created_at_ts})
 
     def _entry_id(self, entry: CacheEntry) -> str:
-        return f"{uuid.uuid5(uuid.NAMESPACE_DNS, entry.query)}"
+        identity = json.dumps([entry.key_version, entry.model, entry.query], ensure_ascii=False)
+        return str(uuid.uuid5(uuid.NAMESPACE_DNS, identity))
 
     def _entry_key(self, entry_id: str) -> str:
         return f"{self._namespace}:entry:{entry_id}"

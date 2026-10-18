@@ -1,12 +1,15 @@
 name: Publish to PyPI
 
 on:
-  push:
-    tags:
-      - "v*"
   release:
     types: [published]
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -19,6 +22,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PYTHON'
+          import os
+          import tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          if os.environ["RELEASE_TAG"] not in (version, f"v{version}"):
+              raise SystemExit("Release tag does not match package version")
+          PYTHON
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Test release source
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: |
+          uv sync --all-extras --locked
+          uv run pytest tests/ --cov=llm_cache_router --cov-branch
+          uv run ruff check llm_cache_router/
+          uv run mypy llm_cache_router/ --ignore-missing-imports
 
       - name: Install build tools
         run: |
@@ -60,3 +89,24 @@ jobs:
           # Uses PyPI Trusted Publishing — configure at
           # https://pypi.org/manage/project/llm-cache-router/settings/publishing/
           # No API token required.
+
+  verify-pypi:
+    name: Verify published package in a clean environment
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the published version with all runtime extras
+        run: |
+          VERSION=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          python -m venv "$RUNNER_TEMP/pypi-smoke"
+          "$RUNNER_TEMP/pypi-smoke/bin/python" -m pip install --index-url https://pypi.org/simple "llm-cache-router[all]==$VERSION"
+          "$RUNNER_TEMP/pypi-smoke/bin/python" -m pip check
+      - name: Check installed resources and offline CLI
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: '"$RUNNER_TEMP/pypi-smoke/bin/python" -I tests/smoke_distribution.py'

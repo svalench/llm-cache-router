@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-18
+
+### Fixed
+- Raise vulnerable direct dependency/build-tool minimums and refresh the development lockfile after dependency advisory checks.
+- Hash embeddings are stable across Python workers and restarts, allowing persistent caches to reuse vectors reliably.
+- Redis entries for the same prompt no longer overwrite other models or key versions.
+- Qdrant supports current clients using `query_points`, stores the configured key version, and allows invalidation before the first request.
+- Escape message boundaries in cache keys so multiline user content cannot impersonate separate conversation messages, including in exact-match mode.
+- Publish only on GitHub release publication, validate the tag against package metadata, and run tests before building release distributions.
+
+Cache keys now escape message text, and hash embeddings use a stable digest. Rotate `key_version` (or use a fresh Qdrant collection) when upgrading persistent hash caches to avoid mixing old and new vectors. Existing Redis/Qdrant cache entries may miss after upgrade and expire normally; no stored data is deleted by the upgrade.
+
 ## [0.3.1] - 2026-09-11
 
 Maintenance release adding an offline onboarding path and stronger distribution validation.

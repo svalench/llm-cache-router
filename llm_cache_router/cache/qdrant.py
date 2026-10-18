@@ -100,7 +100,12 @@ class QdrantSemanticCache(CacheBackend):
         query_filter = self._build_query_filter(model, query_text)
         if query_filter is not None:
             search_kwargs["query_filter"] = query_filter
-        results = await qdrant_client.search(**search_kwargs)
+        # Qdrant 1.16 removed search(); keep compatibility with older supported clients.
+        if hasattr(qdrant_client, "query_points"):
+            search_kwargs["query"] = search_kwargs.pop("query_vector")
+            results = (await qdrant_client.query_points(**search_kwargs)).points
+        else:
+            results = await qdrant_client.search(**search_kwargs)
         if not results:
             return None, None
 
@@ -145,6 +150,7 @@ class QdrantSemanticCache(CacheBackend):
             ttl=self._config.ttl,
             hit_count=0,
             model=model,
+            key_version=self._config.key_version,
         )
         payload = {
             "query": entry.query,
@@ -185,6 +191,7 @@ class QdrantSemanticCache(CacheBackend):
         self._total_vectors = 0
 
     async def invalidate(self, *, model: str | None = None) -> int:
+        await self._ensure_collection()
         if model is None:
             count = await self._count_vectors()
             await self.clear()

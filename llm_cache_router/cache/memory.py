@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import heapq
+import importlib
 import time
+from typing import Any
 
 import numpy as np
 
@@ -10,8 +12,9 @@ from llm_cache_router.cache.base import CacheBackend
 from llm_cache_router.embeddings.encoder import EncoderProtocol, HashingEncoder, SentenceEncoder
 from llm_cache_router.models import CacheConfig, CacheEntry, LLMResponse, Message
 
+faiss: Any
 try:
-    import faiss  # type: ignore
+    faiss = importlib.import_module("faiss")
 except ImportError:  # pragma: no cover
     faiss = None
 

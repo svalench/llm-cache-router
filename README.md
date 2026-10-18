@@ -55,7 +55,7 @@ One async API. Six named providers plus OpenAI-compatible endpoints. Three cache
 - The package is **beta**. Validate cache correctness, latency, and savings on your own workload before production use.
 - Semantic similarity is not a correctness guarantee. The offline demo uses exact matching and a hash encoder; it does not demonstrate semantic understanding or benchmark savings.
 - Budget counters are process-local and checked **after** provider usage is recorded, not before a billable request. They are not a hard provider-side spending cap.
-- The default embedding model may download weights on first use. If loading fails, the current cache backends fall back to hashing; hash similarity is not a substitute for semantic embeddings.
+- Load embedding models only from trusted repositories or local directories. The default embedding model may download weights on first use. If loading fails, the current cache backends fall back to hashing; hash similarity is not a substitute for semantic embeddings.
 
 ## Features
 
@@ -71,7 +71,7 @@ One async API. Six named providers plus OpenAI-compatible endpoints. Three cache
 - **Typed** — Pydantic v2 models everywhere, fully typed public API.
 - **Tested** — unit tests covering router, cache (incl. multimodal keys, model isolation, invalidation, key versioning), strategies, embeddings, providers, retry, warmup, HTTP middleware, and the offline demo.
 
-> **Latest:** [v0.3.1 release notes](docs/releases/v0.3.1.md): offline demo, corrected onboarding, and distribution validation.
+> **Latest:** [0.3.2 changelog](CHANGELOG.md): cache isolation fixes, current Qdrant support, and validated release publishing.
 
 ## Installation
 

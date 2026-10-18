@@ -33,7 +33,13 @@ jobs:
         env:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
-        run: uv run pytest tests/ -v --tb=short --cov=llm_cache_router --cov-report=xml
+        run: uv run pytest tests/ -v --tb=short --cov=llm_cache_router --cov-branch --cov-report=xml --cov-report=json
+
+      - name: Save coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.json
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -98,3 +104,17 @@ jobs:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
         run: '"$RUNNER_TEMP/wheel-smoke/bin/python" -I tests/smoke_distribution.py'
+
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - name: Audit locked dependencies
+        run: |
+          uv export --locked --all-extras --no-emit-project --no-hashes --format requirements-txt > audit-requirements.txt
+          uvx pip-audit -r audit-requirements.txt --no-deps --disable-pip
