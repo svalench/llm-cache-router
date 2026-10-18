@@ -1,12 +1,15 @@
 name: Publish to PyPI
 
 on:
-  push:
-    tags:
-      - "v*"
   release:
     types: [published]
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -19,6 +22,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PYTHON'
+          import os
+          import tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          if os.environ["RELEASE_TAG"] not in (version, f"v{version}"):
+              raise SystemExit("Release tag does not match package version")
+          PYTHON
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Test release source
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: |
+          uv sync --all-extras --locked
+          uv run pytest tests/ --cov=llm_cache_router --cov-branch
+          uv run ruff check llm_cache_router/
+          uv run mypy llm_cache_router/ --ignore-missing-imports
 
       - name: Install build tools
         run: |

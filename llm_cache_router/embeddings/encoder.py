@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 from typing import Any, Protocol
 
@@ -45,7 +46,9 @@ class HashingEncoder:
         if not text:
             return vec
         for token in text.lower().split():
-            idx = abs(hash(token)) % self._dimension
+            idx = (
+                int.from_bytes(hashlib.sha256(token.encode()).digest()[:8], "big") % self._dimension
+            )
             vec[idx] += 1.0
         norm = np.linalg.norm(vec)
         if norm == 0:

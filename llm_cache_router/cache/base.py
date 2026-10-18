@@ -131,5 +131,8 @@ class CacheBackend(ABC):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             normalized = cls._content_to_text(content)
-            chunks.append(f"{role}:{normalized}")
+            # Escape message boundaries so user text cannot impersonate another role.
+            escaped_role = json.dumps(role, ensure_ascii=False)[1:-1]
+            escaped_content = json.dumps(normalized, ensure_ascii=False)[1:-1]
+            chunks.append(f"{escaped_role}:{escaped_content}")
         return "\n".join(chunks).strip()
